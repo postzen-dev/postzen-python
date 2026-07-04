@@ -1,12 +1,12 @@
 [project]
-name = "postzen"
+name = "postzen-sdk"
 version = "1.0.0"
-description = "PostZen Public API"
+description = "Official Python SDK for the PostZen Public API — manage profiles, connected social accounts, media uploads, and post publishing"
 authors = [
-  {name = "OpenAPI Generator Community",email = "team@openapitools.org"},
+  {name = "PostZen"},
 ]
 readme = "README.md"
-keywords = ["OpenAPI", "OpenAPI-Generator", "PostZen Public API"]
+keywords = ["postzen", "social media", "api", "sdk", "publishing"]
 requires-python = ">=3.9"
 
 dependencies = [
@@ -17,6 +17,7 @@ dependencies = [
 ]
 
 [project.urls]
+Homepage = "https://postzen.dev"
 Repository = "https://github.com/postzen-dev/postzen-python"
 
 [tool.poetry]

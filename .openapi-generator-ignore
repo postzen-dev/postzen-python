@@ -21,3 +21,9 @@
 #docs/*.md
 # Then explicitly reverse the ignore rule for a single file:
 #!docs/README.md
+
+# PostZen: these files carry hand-maintained PyPI packaging metadata
+# (distribution name "postzen-sdk"). Do not let the generator overwrite them.
+pyproject.toml
+setup.py
+README.md
