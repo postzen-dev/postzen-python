@@ -1,0 +1,1891 @@
+{
+	"openapi": "3.1.0",
+	"info": {
+		"title": "PostZen Public API",
+		"version": "1.0.0",
+		"description": "The PostZen Public API lets server-side integrations manage profiles, connected social accounts, OAuth connection flows, media uploads, and post creation."
+	},
+	"servers": [
+		{
+			"url": "https://api.postzen.dev",
+			"description": "Production API"
+		}
+	],
+	"security": [
+		{
+			"bearerAuth": []
+		}
+	],
+	"tags": [
+		{
+			"name": "Profiles",
+			"description": "List, create, update, and delete PostZen profiles."
+		},
+		{
+			"name": "Accounts",
+			"description": "List and disconnect connected social accounts."
+		},
+		{
+			"name": "Connect",
+			"description": "Start and complete OAuth account connection flows."
+		},
+		{
+			"name": "Media",
+			"description": "Create presigned upload URLs for PostZen-hosted media."
+		},
+		{
+			"name": "Posts",
+			"description": "Create drafts, scheduled posts, or immediate posts."
+		}
+	],
+	"paths": {
+		"/v1/profiles": {
+			"get": {
+				"tags": [
+					"Profiles"
+				],
+				"operationId": "listProfiles",
+				"summary": "List profiles",
+				"description": "Returns profiles available to the API key, sorted by creation date (oldest first). Read-only and read-write API keys are accepted.",
+				"responses": {
+					"200": {
+						"description": "Profiles returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProfilesListResponse"
+								},
+								"example": {
+									"profiles": [
+										{
+											"_id": "jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e",
+											"userId": "jd7cm2xw9krt4v1n8q6zs0b3hf5yg2pa",
+											"name": "Marketing Team",
+											"description": "Profile for marketing campaigns",
+											"color": "#4caf50",
+											"isDefault": false,
+											"createdAt": "2026-06-13T16:00:00.000Z"
+										}
+									]
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"500": {
+						"description": "Unexpected server error.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "Failed to list profiles"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Profiles"
+				],
+				"operationId": "createProfile",
+				"summary": "Create a profile",
+				"description": "Creates a profile. This endpoint requires a read-write API key with access to all profiles.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ProfileCreateRequest"
+							},
+							"example": {
+								"name": "Marketing Team",
+								"description": "Profile for marketing campaigns",
+								"color": "#4caf50"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Profile created.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProfileWriteResponse"
+								},
+								"example": {
+									"message": "Profile created successfully",
+									"profile": {
+										"_id": "jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e",
+										"userId": "jd7cm2xw9krt4v1n8q6zs0b3hf5yg2pa",
+										"name": "Marketing Team",
+										"description": "Profile for marketing campaigns",
+										"color": "#4caf50",
+										"isDefault": false,
+										"createdAt": "2026-06-13T16:00:00.000Z"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/profiles/{profileId}": {
+			"parameters": [
+				{
+					"name": "profileId",
+					"in": "path",
+					"required": true,
+					"description": "PostZen profile id.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Profiles"
+				],
+				"operationId": "getProfile",
+				"summary": "Get a profile",
+				"description": "Returns a single profile visible to the API key.",
+				"responses": {
+					"200": {
+						"description": "Profile returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProfileResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"put": {
+				"tags": [
+					"Profiles"
+				],
+				"operationId": "updateProfile",
+				"summary": "Update a profile",
+				"description": "Updates one or more profile fields. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ProfileUpdateRequest"
+							},
+							"example": {
+								"name": "Marketing Team (Updated)",
+								"description": "Updated profile description",
+								"color": "#2196f3",
+								"isDefault": true
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Profile updated.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ProfileWriteResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Profiles"
+				],
+				"operationId": "deleteProfile",
+				"summary": "Delete a profile",
+				"description": "Deletes a profile. The default profile cannot be deleted, and profiles with connected accounts must be disconnected first.",
+				"responses": {
+					"200": {
+						"description": "Profile deleted.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MessageResponse"
+								},
+								"example": {
+									"message": "Profile deleted successfully"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/accounts": {
+			"get": {
+				"tags": [
+					"Accounts"
+				],
+				"operationId": "listAccounts",
+				"summary": "List accounts",
+				"description": "Returns connected social accounts available to the API key, sorted by connection date (newest first). Read-only and read-write API keys are accepted.",
+				"parameters": [
+					{
+						"name": "profileId",
+						"in": "query",
+						"description": "Filter accounts by profile id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "platform",
+						"in": "query",
+						"description": "Filter accounts by platform. `twitter` is accepted as an alias for `x`.",
+						"schema": {
+							"$ref": "#/components/schemas/PublicPlatformInput"
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"description": "`connected` returns healthy accounts. `disconnected` returns accounts that need reconnection or are disabled.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"connected",
+								"disconnected"
+							]
+						}
+					},
+					{
+						"name": "page",
+						"in": "query",
+						"description": "1-based page number. Must be provided with `limit`.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size. Must be provided with `page`.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Accounts returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AccountsListResponse"
+								},
+								"example": {
+									"accounts": [
+										{
+											"_id": "j97kp4mw2xnv6r1t8c3zq5bs9fh0yg4d",
+											"platform": "twitter",
+											"providerAccountId": "1934567890123456789",
+											"profileId": {
+												"_id": "jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e",
+												"name": "Marketing Team",
+												"slug": "marketing-team",
+												"color": "#4caf50"
+											},
+											"username": "acme",
+											"displayName": "Acme",
+											"profileUrl": "https://x.com/acme",
+											"status": "connected",
+											"isActive": true,
+											"connectedAt": "2026-06-13T16:00:00.000Z"
+										}
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/accounts/{accountId}": {
+			"delete": {
+				"tags": [
+					"Accounts"
+				],
+				"operationId": "disconnectAccount",
+				"summary": "Disconnect an account",
+				"description": "Disconnects and removes a connected social account. Pending scheduled, queued, and publishing targets for that account are canceled. This endpoint requires a read-write API key.",
+				"parameters": [
+					{
+						"name": "accountId",
+						"in": "path",
+						"required": true,
+						"description": "PostZen account id.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Account disconnected.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MessageResponse"
+								},
+								"example": {
+									"message": "Account disconnected successfully"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/connect/{platform}": {
+			"parameters": [
+				{
+					"name": "platform",
+					"in": "path",
+					"required": true,
+					"description": "Social platform to connect. `twitter` is accepted as an alias for `x`.",
+					"schema": {
+						"$ref": "#/components/schemas/PublicPlatformInput"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Connect"
+				],
+				"operationId": "createConnectUrl",
+				"summary": "Create an OAuth connect URL",
+				"description": "Initiates an OAuth connection flow and returns an authorization URL to redirect the user to. The OAuth state expires after 10 minutes. This endpoint requires a read-write API key.",
+				"parameters": [
+					{
+						"name": "profileId",
+						"in": "query",
+						"required": true,
+						"description": "PostZen profile id to attach the connected account to.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "redirectUrl",
+						"in": "query",
+						"description": "Custom URL PostZen redirects to after the connection completes.",
+						"schema": {
+							"type": "string",
+							"format": "uri"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "OAuth URL created.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ConnectStartResponse"
+								},
+								"example": {
+									"authUrl": "https://www.linkedin.com/oauth/v2/authorization?response_type=code&client_id=86xk2ab9cdef01&state=3q2Xv8Zk1mR5tY7wA9bC4dE6&scope=openid%20profile%20w_member_social%20email",
+									"state": "3q2Xv8Zk1mR5tY7wA9bC4dE6"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"$ref": "#/components/responses/PaymentRequired"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Connect"
+				],
+				"operationId": "completeConnect",
+				"summary": "Complete an OAuth connection",
+				"description": "Exchanges an OAuth authorization code for tokens and connects the account to the specified profile. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ConnectCompleteRequest"
+							},
+							"example": {
+								"code": "AQTF0v6PZnq1yTkGxg3M4S8d",
+								"state": "3q2Xv8Zk1mR5tY7wA9bC4dE6",
+								"profileId": "jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Account connected.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ConnectCompleteResponse"
+								},
+								"example": {
+									"message": "Account connected successfully",
+									"platform": "twitter",
+									"profileId": "jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e",
+									"status": "connected",
+									"accounts": [
+										{
+											"_id": "j97kp4mw2xnv6r1t8c3zq5bs9fh0yg4d",
+											"platform": "twitter",
+											"providerAccountId": "1934567890123456789",
+											"profileId": {
+												"_id": "jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e",
+												"name": "Marketing Team",
+												"slug": "marketing-team",
+												"color": "#4caf50"
+											},
+											"username": "acme",
+											"displayName": "Acme",
+											"status": "connected",
+											"isActive": true,
+											"connectedAt": "2026-06-19T16:00:00.000Z"
+										}
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request, expired OAuth state, or a failed platform callback. Callback failures return a camelCase error code with an optional `errorDescription`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ConnectCompleteErrorResponse"
+								},
+								"example": {
+									"error": "oauthCallbackFailed",
+									"errorDescription": "OAuth callback did not complete a matching platform connection"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"$ref": "#/components/responses/PaymentRequired"
+					},
+					"403": {
+						"description": "The API key does not have access to the profile, or the OAuth state belongs to a different user or profile.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ConnectCompleteErrorResponse"
+								},
+								"example": {
+									"error": "oauthStateUserMismatch"
+								}
+							}
+						}
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"description": "The platform token exchange failed or an unexpected server error occurred.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ConnectCompleteErrorResponse"
+								},
+								"example": {
+									"error": "linkedinOauthFailed"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/media/presign": {
+			"post": {
+				"tags": [
+					"Media"
+				],
+				"operationId": "createMediaPresign",
+				"summary": "Create a presigned media upload URL",
+				"description": "Creates a presigned URL for uploading an image, video, GIF, or PDF to PostZen-hosted storage. Upload the file with an HTTP `PUT` to `uploadUrl`, then reference `publicUrl` in post `mediaItems`. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/MediaPresignRequest"
+							},
+							"example": {
+								"filename": "launch-video.mp4",
+								"contentType": "video/mp4",
+								"size": 10485760
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Presigned upload URL created.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MediaPresignResponse"
+								},
+								"example": {
+									"uploadUrl": "https://postzen-media.a1b2c3d4e5f6a7b8.r2.cloudflarestorage.com/users/jd7cm2xw9krt4v1n8q6zs0b3hf5yg2pa/media/6f0d0296-6a1c-4d5b-9a2e-3f8c1b7d4e90/launch-video.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Expires=900&X-Amz-Signature=f3ac1e2b",
+									"publicUrl": "https://media.postzen.dev/users/jd7cm2xw9krt4v1n8q6zs0b3hf5yg2pa/media/6f0d0296-6a1c-4d5b-9a2e-3f8c1b7d4e90/launch-video.mp4",
+									"key": "users/jd7cm2xw9krt4v1n8q6zs0b3hf5yg2pa/media/6f0d0296-6a1c-4d5b-9a2e-3f8c1b7d4e90/launch-video.mp4",
+									"type": "video"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/posts": {
+			"post": {
+				"tags": [
+					"Posts"
+				],
+				"operationId": "createPost",
+				"summary": "Create a post",
+				"description": "Creates a draft, scheduled post, or immediate post. This endpoint requires a read-write API key. Provide exactly one creation mode: `publishNow`, `scheduledFor`, or `isDraft`.",
+				"parameters": [
+					{
+						"name": "x-request-id",
+						"in": "header",
+						"description": "Optional idempotency key. Repeating the same value returns the original post instead of creating a new one.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreatePostRequest"
+							},
+							"example": {
+								"title": "Launch post",
+								"content": "We shipped the new release.",
+								"publishNow": true,
+								"platforms": [
+									{
+										"platform": "twitter",
+										"accountId": "1934567890123456789"
+									}
+								]
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Idempotency replay.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CreatePostReplayResponse"
+								},
+								"example": {
+									"existingPost": {
+										"_id": "jx58t2kqm4wr9v3n7c1zp6bs0dh5fg8y",
+										"title": "Launch post",
+										"content": "We shipped the new release.",
+										"status": "published",
+										"scheduledFor": null,
+										"timezone": "UTC",
+										"platforms": []
+									},
+									"message": "Post already exists for this request id"
+								}
+							}
+						}
+					},
+					"201": {
+						"description": "Post created.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CreatePostResponse"
+								},
+								"example": {
+									"post": {
+										"_id": "jx58t2kqm4wr9v3n7c1zp6bs0dh5fg8y",
+										"title": "Launch post",
+										"content": "We shipped the new release.",
+										"status": "published",
+										"scheduledFor": null,
+										"timezone": "UTC",
+										"platforms": [
+											{
+												"platform": "twitter",
+												"accountId": {
+													"_id": "j97kp4mw2xnv6r1t8c3zq5bs9fh0yg4d",
+													"platform": "twitter",
+													"username": "acme",
+													"displayName": "Acme",
+													"isActive": true
+												},
+												"status": "published",
+												"platformPostUrl": "https://x.com/acme/status/1934567890123456789"
+											}
+										]
+									},
+									"message": "Post published successfully"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		}
+	},
+	"components": {
+		"securitySchemes": {
+			"bearerAuth": {
+				"type": "http",
+				"scheme": "bearer",
+				"description": "PostZen API key."
+			}
+		},
+		"responses": {
+			"BadRequest": {
+				"description": "Invalid request.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"example": {
+							"error": "JSON body is required"
+						}
+					}
+				}
+			},
+			"Unauthorized": {
+				"description": "Missing or invalid API key.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"example": {
+							"error": "Unauthorized"
+						}
+					}
+				}
+			},
+			"PaymentRequired": {
+				"description": "A billing limit prevents the requested connection.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/PaymentRequiredError"
+						},
+						"example": {
+							"error": "Add a payment method before connecting more than 2 social accounts.",
+							"code": "paymentRequired",
+							"reason": "freeTierExceeded",
+							"documentationUrl": "https://docs.postzen.dev/api-reference/connect/create-connect-url",
+							"dashboardUrl": "https://app.postzen.dev/settings?tab=billing",
+							"details": {
+								"freeTierAccountLimit": 2,
+								"currentAccountCount": 2,
+								"hasPaymentMethod": false
+							}
+						}
+					}
+				}
+			},
+			"Forbidden": {
+				"description": "The API key does not have sufficient permission or profile access.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"example": {
+							"error": "API key requires read_write permission"
+						}
+					}
+				}
+			},
+			"NotFound": {
+				"description": "Resource not found.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"example": {
+							"error": "Not found"
+						}
+					}
+				}
+			},
+			"InternalError": {
+				"description": "Unexpected server error.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"example": {
+							"error": "Failed to create post"
+						}
+					}
+				}
+			}
+		},
+		"schemas": {
+			"ErrorResponse": {
+				"type": "object",
+				"required": [
+					"error"
+				],
+				"properties": {
+					"error": {
+						"type": "string"
+					}
+				}
+			},
+			"ConnectCompleteErrorResponse": {
+				"type": "object",
+				"required": [
+					"error"
+				],
+				"properties": {
+					"error": {
+						"type": "string",
+						"description": "Human-readable message, or a camelCase error code (for example `oauthCallbackFailed`) when the platform callback fails."
+					},
+					"errorDescription": {
+						"type": "string",
+						"description": "Additional detail reported by the platform, when available."
+					}
+				}
+			},
+			"PaymentRequiredError": {
+				"type": "object",
+				"required": [
+					"error",
+					"code",
+					"reason",
+					"documentationUrl",
+					"dashboardUrl"
+				],
+				"properties": {
+					"error": {
+						"type": "string"
+					},
+					"code": {
+						"type": "string",
+						"const": "paymentRequired"
+					},
+					"reason": {
+						"type": "string",
+						"enum": [
+							"freeTierExceeded",
+							"xRequiresPaymentMethod"
+						]
+					},
+					"documentationUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"dashboardUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"details": {
+						"type": "object",
+						"properties": {
+							"freeTierAccountLimit": {
+								"type": "number"
+							},
+							"currentAccountCount": {
+								"type": "number"
+							},
+							"hasPaymentMethod": {
+								"type": "boolean"
+							}
+						}
+					}
+				}
+			},
+			"MessageResponse": {
+				"type": "object",
+				"required": [
+					"message"
+				],
+				"properties": {
+					"message": {
+						"type": "string"
+					}
+				}
+			},
+			"PublicPlatformInput": {
+				"type": "string",
+				"enum": [
+					"twitter",
+					"x",
+					"instagram",
+					"tiktok",
+					"linkedin",
+					"facebook",
+					"youtube",
+					"threads",
+					"pinterest"
+				]
+			},
+			"PublicPlatformOutput": {
+				"type": "string",
+				"enum": [
+					"twitter",
+					"instagram",
+					"tiktok",
+					"linkedin",
+					"facebook",
+					"youtube",
+					"threads",
+					"pinterest"
+				]
+			},
+			"Profile": {
+				"type": "object",
+				"required": [
+					"_id",
+					"userId",
+					"name",
+					"color",
+					"isDefault",
+					"createdAt"
+				],
+				"properties": {
+					"_id": {
+						"type": "string",
+						"description": "PostZen profile id."
+					},
+					"userId": {
+						"type": "string",
+						"description": "Owner user id."
+					},
+					"name": {
+						"type": "string",
+						"maxLength": 80
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 240
+					},
+					"color": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{6}$",
+						"description": "Hex color in `#rrggbb` format."
+					},
+					"isDefault": {
+						"type": "boolean"
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"ProfilesListResponse": {
+				"type": "object",
+				"required": [
+					"profiles"
+				],
+				"properties": {
+					"profiles": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Profile"
+						}
+					}
+				}
+			},
+			"ProfileResponse": {
+				"type": "object",
+				"required": [
+					"profile"
+				],
+				"properties": {
+					"profile": {
+						"$ref": "#/components/schemas/Profile"
+					}
+				}
+			},
+			"ProfileWriteResponse": {
+				"type": "object",
+				"required": [
+					"message",
+					"profile"
+				],
+				"properties": {
+					"message": {
+						"type": "string"
+					},
+					"profile": {
+						"$ref": "#/components/schemas/Profile"
+					}
+				}
+			},
+			"ProfileCreateRequest": {
+				"type": "object",
+				"required": [
+					"name"
+				],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 240
+					},
+					"color": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{6}$",
+						"default": "#ffeda0"
+					}
+				}
+			},
+			"ProfileUpdateRequest": {
+				"type": "object",
+				"description": "Include at least one field.",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"description": {
+						"type": [
+							"string",
+							"null"
+						],
+						"maxLength": 240,
+						"description": "Pass an empty string or `null` to clear the description."
+					},
+					"color": {
+						"type": "string",
+						"pattern": "^#[0-9a-fA-F]{6}$"
+					},
+					"isDefault": {
+						"type": "boolean",
+						"description": "Set to `true` to make this the default profile."
+					}
+				}
+			},
+			"AccountProfileSummary": {
+				"type": "object",
+				"required": [
+					"_id",
+					"name",
+					"slug",
+					"color"
+				],
+				"properties": {
+					"_id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"slug": {
+						"type": "string"
+					},
+					"color": {
+						"type": "string"
+					}
+				}
+			},
+			"Account": {
+				"type": "object",
+				"required": [
+					"_id",
+					"platform",
+					"providerAccountId",
+					"profileId",
+					"username",
+					"displayName",
+					"status",
+					"isActive",
+					"connectedAt"
+				],
+				"properties": {
+					"_id": {
+						"type": "string"
+					},
+					"platform": {
+						"$ref": "#/components/schemas/PublicPlatformOutput"
+					},
+					"providerAccountId": {
+						"type": "string"
+					},
+					"profileId": {
+						"$ref": "#/components/schemas/AccountProfileSummary"
+					},
+					"username": {
+						"type": "string"
+					},
+					"displayName": {
+						"type": "string"
+					},
+					"profileUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"avatarUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"status": {
+						"type": "string",
+						"enum": [
+							"connected",
+							"needsReauth",
+							"disconnected",
+							"disabled"
+						]
+					},
+					"isActive": {
+						"type": "boolean"
+					},
+					"connectedAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"lastSyncedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"Pagination": {
+				"type": "object",
+				"required": [
+					"page",
+					"limit",
+					"total",
+					"totalPages"
+				],
+				"properties": {
+					"page": {
+						"type": "integer",
+						"minimum": 1
+					},
+					"limit": {
+						"type": "integer",
+						"minimum": 1,
+						"maximum": 100
+					},
+					"total": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"totalPages": {
+						"type": "integer",
+						"minimum": 0
+					}
+				}
+			},
+			"AccountsListResponse": {
+				"type": "object",
+				"required": [
+					"accounts"
+				],
+				"properties": {
+					"accounts": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Account"
+						}
+					},
+					"pagination": {
+						"$ref": "#/components/schemas/Pagination"
+					}
+				}
+			},
+			"ConnectStartResponse": {
+				"type": "object",
+				"required": [
+					"authUrl",
+					"state"
+				],
+				"properties": {
+					"authUrl": {
+						"type": "string",
+						"format": "uri",
+						"description": "URL to redirect the user to for platform authorization."
+					},
+					"state": {
+						"type": "string",
+						"description": "OAuth state parameter generated by PostZen."
+					}
+				}
+			},
+			"ConnectCompleteRequest": {
+				"type": "object",
+				"required": [
+					"code",
+					"state",
+					"profileId"
+				],
+				"properties": {
+					"code": {
+						"type": "string",
+						"description": "OAuth authorization code returned by the platform."
+					},
+					"state": {
+						"type": "string",
+						"description": "State returned by `GET /v1/connect/{platform}`."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "PostZen profile id used when the connection was initiated."
+					}
+				}
+			},
+			"ConnectCompleteResponse": {
+				"type": "object",
+				"required": [
+					"message",
+					"platform",
+					"profileId",
+					"status"
+				],
+				"properties": {
+					"message": {
+						"type": "string"
+					},
+					"platform": {
+						"$ref": "#/components/schemas/PublicPlatformOutput"
+					},
+					"profileId": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string",
+						"enum": [
+							"connected",
+							"needsReauth"
+						]
+					},
+					"missingScopes": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"connectedAccountCount": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"accounts": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Account"
+						}
+					}
+				}
+			},
+			"MediaPresignRequest": {
+				"type": "object",
+				"required": [
+					"filename",
+					"contentType"
+				],
+				"properties": {
+					"filename": {
+						"type": "string",
+						"description": "Original file name. PostZen sanitizes it for storage."
+					},
+					"contentType": {
+						"type": "string",
+						"enum": [
+							"image/jpeg",
+							"image/jpg",
+							"image/png",
+							"image/webp",
+							"image/gif",
+							"video/mp4",
+							"video/mpeg",
+							"video/quicktime",
+							"video/avi",
+							"video/x-msvideo",
+							"video/webm",
+							"video/x-m4v",
+							"application/pdf"
+						]
+					},
+					"size": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 5368709120,
+						"description": "File size in bytes."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "Optional profile scope. If provided, the API key must have access to the profile."
+					}
+				}
+			},
+			"MediaPresignResponse": {
+				"type": "object",
+				"required": [
+					"uploadUrl",
+					"publicUrl",
+					"key",
+					"type"
+				],
+				"properties": {
+					"uploadUrl": {
+						"type": "string",
+						"format": "uri",
+						"description": "Use this URL for the direct file upload."
+					},
+					"publicUrl": {
+						"type": "string",
+						"format": "uri",
+						"description": "Use this URL in post `mediaItems`."
+					},
+					"key": {
+						"type": "string"
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"image",
+							"video",
+							"gif",
+							"document"
+						]
+					}
+				}
+			},
+			"CreatePostRequest": {
+				"type": "object",
+				"description": "Provide exactly one creation mode: `publishNow`, `scheduledFor`, or `isDraft`. `platforms` is required unless `isDraft` is true.",
+				"properties": {
+					"title": {
+						"type": "string",
+						"description": "Internal post title. YouTube uses this as the fallback video title when `settings.title` is omitted."
+					},
+					"content": {
+						"type": "string",
+						"default": "",
+						"description": "Shared post text. Platform-specific validation still applies."
+					},
+					"mediaItems": {
+						"type": "array",
+						"maxItems": 10,
+						"description": "Duplicate URLs are removed before the post is created.",
+						"items": {
+							"$ref": "#/components/schemas/PostMediaItem"
+						}
+					},
+					"platforms": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CreatePostTarget"
+						}
+					},
+					"scheduledFor": {
+						"type": "string",
+						"format": "date-time",
+						"description": "ISO 8601 date for scheduled posts. Must be at least 60 seconds in the future."
+					},
+					"publishNow": {
+						"type": "boolean",
+						"description": "Publish synchronously where possible."
+					},
+					"isDraft": {
+						"type": "boolean",
+						"description": "Create a draft. `platforms` is optional for drafts."
+					},
+					"timezone": {
+						"type": "string",
+						"default": "UTC"
+					},
+					"tags": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				}
+			},
+			"PostMediaItem": {
+				"type": "object",
+				"required": [
+					"url"
+				],
+				"properties": {
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "PostZen-hosted `publicUrl` from `POST /v1/media/presign`, or an external image/video URL. External URLs are downloaded and re-hosted by PostZen; they must resolve to an image or video (PDF is not supported) of at most 100 MB."
+					},
+					"title": {
+						"type": "string",
+						"description": "Optional alt text/title for the media item."
+					}
+				}
+			},
+			"CreatePostTarget": {
+				"type": "object",
+				"required": [
+					"platform",
+					"accountId"
+				],
+				"properties": {
+					"platform": {
+						"$ref": "#/components/schemas/PublicPlatformInput"
+					},
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id or provider account id."
+					},
+					"customContent": {
+						"type": "string",
+						"description": "Overrides shared `content` for this platform."
+					},
+					"settings": {
+						"$ref": "#/components/schemas/PostPlatformSettings"
+					}
+				}
+			},
+			"PostPlatformSettings": {
+				"description": "Platform-specific publishing options. Unknown keys are ignored.",
+				"oneOf": [
+					{
+						"$ref": "#/components/schemas/InstagramSettings"
+					},
+					{
+						"$ref": "#/components/schemas/FacebookSettings"
+					},
+					{
+						"$ref": "#/components/schemas/ThreadsSettings"
+					},
+					{
+						"$ref": "#/components/schemas/TikTokSettings"
+					},
+					{
+						"$ref": "#/components/schemas/LinkedInSettings"
+					},
+					{
+						"$ref": "#/components/schemas/XSettings"
+					},
+					{
+						"$ref": "#/components/schemas/YouTubeSettings"
+					},
+					{
+						"$ref": "#/components/schemas/PinterestSettings"
+					}
+				]
+			},
+			"InstagramSettings": {
+				"type": "object",
+				"properties": {
+					"postType": {
+						"type": "string",
+						"enum": [
+							"feed",
+							"story",
+							"reel",
+							"carousel"
+						],
+						"default": "feed"
+					},
+					"collaborators": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					},
+					"userTags": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": [
+								"username",
+								"x",
+								"y"
+							],
+							"properties": {
+								"username": {
+									"type": "string"
+								},
+								"x": {
+									"type": "number"
+								},
+								"y": {
+									"type": "number"
+								}
+							}
+						}
+					},
+					"firstComment": {
+						"type": "string"
+					},
+					"shareToFeed": {
+						"type": "boolean"
+					}
+				}
+			},
+			"FacebookSettings": {
+				"type": "object",
+				"properties": {
+					"link": {
+						"type": "string",
+						"format": "uri"
+					},
+					"firstComment": {
+						"type": "string"
+					}
+				}
+			},
+			"ThreadsSettings": {
+				"type": "object",
+				"properties": {
+					"replyControl": {
+						"type": "string",
+						"enum": [
+							"everyone",
+							"accountsYouFollow",
+							"mentionedOnly"
+						]
+					}
+				}
+			},
+			"TikTokSettings": {
+				"type": "object",
+				"properties": {
+					"privacyLevel": {
+						"type": "string",
+						"enum": [
+							"publicToEveryone",
+							"mutualFollowFriends",
+							"followerOfCreator",
+							"selfOnly"
+						]
+					},
+					"allowComments": {
+						"type": "boolean"
+					},
+					"allowDuet": {
+						"type": "boolean"
+					},
+					"allowStitch": {
+						"type": "boolean"
+					},
+					"disableComment": {
+						"type": "boolean"
+					},
+					"disableDuet": {
+						"type": "boolean"
+					},
+					"disableStitch": {
+						"type": "boolean"
+					},
+					"videoCoverTimestampMs": {
+						"type": "number"
+					},
+					"uploadAsDraft": {
+						"type": "boolean"
+					},
+					"brandContentToggle": {
+						"type": "boolean"
+					},
+					"brandOrganicToggle": {
+						"type": "boolean"
+					}
+				}
+			},
+			"LinkedInSettings": {
+				"type": "object",
+				"properties": {
+					"visibility": {
+						"type": "string",
+						"enum": [
+							"PUBLIC",
+							"CONNECTIONS"
+						]
+					}
+				}
+			},
+			"XSettings": {
+				"type": "object",
+				"properties": {
+					"replySettings": {
+						"type": "string",
+						"enum": [
+							"following",
+							"mentionedUsers"
+						]
+					}
+				}
+			},
+			"YouTubeSettings": {
+				"type": "object",
+				"properties": {
+					"title": {
+						"type": "string"
+					},
+					"privacyStatus": {
+						"type": "string",
+						"enum": [
+							"public",
+							"unlisted",
+							"private"
+						]
+					},
+					"tags": {
+						"oneOf": [
+							{
+								"type": "array",
+								"items": {
+									"type": "string"
+								}
+							},
+							{
+								"type": "string",
+								"description": "Comma-separated tags."
+							}
+						]
+					},
+					"categoryId": {
+						"type": "string"
+					},
+					"madeForKids": {
+						"type": "boolean"
+					},
+					"notifySubscribers": {
+						"type": "boolean"
+					}
+				}
+			},
+			"PinterestSettings": {
+				"type": "object",
+				"properties": {
+					"boardId": {
+						"type": "string",
+						"description": "Pinterest board to publish the pin to."
+					},
+					"title": {
+						"type": "string",
+						"description": "Pin title."
+					},
+					"link": {
+						"type": "string",
+						"format": "uri",
+						"description": "Destination link for the pin."
+					},
+					"altText": {
+						"type": "string"
+					}
+				}
+			},
+			"ApiPost": {
+				"type": "object",
+				"required": [
+					"_id",
+					"title",
+					"content",
+					"status",
+					"scheduledFor",
+					"timezone",
+					"platforms"
+				],
+				"properties": {
+					"_id": {
+						"type": "string"
+					},
+					"title": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"content": {
+						"type": "string"
+					},
+					"status": {
+						"type": "string"
+					},
+					"scheduledFor": {
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time"
+					},
+					"timezone": {
+						"type": "string"
+					},
+					"platforms": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ApiPostPlatformResult"
+						}
+					}
+				}
+			},
+			"ApiPostPlatformResult": {
+				"type": "object",
+				"required": [
+					"platform",
+					"accountId",
+					"status"
+				],
+				"properties": {
+					"platform": {
+						"$ref": "#/components/schemas/PublicPlatformInput"
+					},
+					"accountId": {
+						"$ref": "#/components/schemas/ApiPostAccount"
+					},
+					"status": {
+						"type": "string",
+						"enum": [
+							"draft",
+							"scheduled",
+							"pending",
+							"publishing",
+							"published",
+							"failed",
+							"canceled"
+						]
+					},
+					"platformPostUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"error": {
+						"type": "string"
+					}
+				}
+			},
+			"ApiPostAccount": {
+				"type": "object",
+				"required": [
+					"_id",
+					"platform",
+					"username",
+					"displayName",
+					"isActive"
+				],
+				"properties": {
+					"_id": {
+						"type": "string"
+					},
+					"platform": {
+						"$ref": "#/components/schemas/PublicPlatformInput"
+					},
+					"username": {
+						"type": "string"
+					},
+					"displayName": {
+						"type": "string"
+					},
+					"isActive": {
+						"type": "boolean"
+					}
+				}
+			},
+			"CreatePostResponse": {
+				"type": "object",
+				"required": [
+					"post",
+					"message"
+				],
+				"properties": {
+					"post": {
+						"$ref": "#/components/schemas/ApiPost"
+					},
+					"message": {
+						"type": "string",
+						"enum": [
+							"Post published successfully",
+							"Post scheduled successfully",
+							"Draft created successfully"
+						]
+					}
+				}
+			},
+			"CreatePostReplayResponse": {
+				"type": "object",
+				"required": [
+					"existingPost",
+					"message"
+				],
+				"properties": {
+					"existingPost": {
+						"$ref": "#/components/schemas/ApiPost"
+					},
+					"message": {
+						"type": "string",
+						"const": "Post already exists for this request id"
+					}
+				}
+			}
+		}
+	}
+}
