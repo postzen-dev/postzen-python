@@ -6,9 +6,9 @@ Manual resource modules in this package take precedence over generated modules.
 
 from ._generated.accounts import AccountsResource
 from ._generated.connect import ConnectResource
-from .media import MediaResource
 from ._generated.posts import PostsResource
 from ._generated.profiles import ProfilesResource
+from .media import MediaResource
 
 __all__ = [
     "ProfilesResource",

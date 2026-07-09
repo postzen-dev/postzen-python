@@ -308,9 +308,14 @@ def generate_resource_init(generated: list[str], manual: list[str]) -> str:
         '"""',
         "",
     ]
-    for resource in sorted(all_resources, key=class_name):
-        module = f".{resource}" if resource in manual else f"._generated.{resource}"
-        lines.append(f"from {module} import {class_name(resource)}")
+    # Sort by module path (not class name) so the block satisfies ruff's isort
+    # rule: `._generated.*` modules sort before manual `.<resource>` overrides.
+    imports = sorted(
+        (f".{resource}" if resource in manual else f"._generated.{resource}", class_name(resource))
+        for resource in all_resources
+    )
+    for module, cls in imports:
+        lines.append(f"from {module} import {cls}")
     lines.append("")
     lines.append("__all__ = [")
     for resource in all_resources:
