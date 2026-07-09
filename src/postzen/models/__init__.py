@@ -29,6 +29,7 @@ from ._generated.models import (
     ProfileUpdateRequest,
     ProfileWriteResponse,
 )
+from .media_upload import MediaUploadResult
 
 __all__ = [
     "Account",
@@ -46,6 +47,7 @@ __all__ = [
     "ErrorResponse",
     "MediaPresignRequest",
     "MediaPresignResponse",
+    "MediaUploadResult",
     "MessageResponse",
     "Pagination",
     "PostMediaItem",

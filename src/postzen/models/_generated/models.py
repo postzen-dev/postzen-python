@@ -6,7 +6,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
 class ErrorResponse(BaseModel):
@@ -167,6 +167,7 @@ class Account(BaseModel):
         'youtube',
         'threads',
         'pinterest',
+        'bluesky',
     ]
     providerAccountId: str
     profileId: AccountProfileSummary
@@ -246,6 +247,7 @@ class ConnectCompleteResponse(BaseModel):
         'youtube',
         'threads',
         'pinterest',
+        'bluesky',
     ]
     profileId: str
     status: Literal['connected', 'needsReauth']
@@ -425,6 +427,36 @@ class PinterestSettings(BaseModel):
     altText: str | None = None
 
 
+class AltText(RootModel[str]):
+    root: Annotated[str, Field(max_length=2000)]
+
+
+class BlueskySettings(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    altTexts: Annotated[
+        list[AltText] | None,
+        Field(
+            description='Alt text for each image, matched to the media by order. Each entry is limited to 2000 characters.'
+        ),
+    ] = None
+    languages: Annotated[
+        list[str] | None,
+        Field(
+            description='Up to 3 BCP-47 language codes (e.g. `en`, `pt-BR`) declaring the languages of the post text.',
+            max_length=3,
+        ),
+    ] = None
+    disableLinkCard: Annotated[
+        bool | None,
+        Field(
+            description='When true, PostZen skips generating an external link preview card for the first URL in the post.'
+        ),
+    ] = None
+
+
 class ApiPostAccount(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -441,6 +473,7 @@ class ApiPostAccount(BaseModel):
         'youtube',
         'threads',
         'pinterest',
+        'bluesky',
     ]
     username: str
     displayName: str
@@ -462,6 +495,7 @@ class ApiPostPlatformResult(BaseModel):
         'youtube',
         'threads',
         'pinterest',
+        'bluesky',
     ]
     accountId: ApiPostAccount
     status: Literal[
@@ -486,6 +520,7 @@ class CreatePostTarget(BaseModel):
         'youtube',
         'threads',
         'pinterest',
+        'bluesky',
     ]
     accountId: Annotated[
         str, Field(description='PostZen account id or provider account id.')
@@ -502,6 +537,7 @@ class CreatePostTarget(BaseModel):
         | XSettings
         | YouTubeSettings
         | PinterestSettings
+        | BlueskySettings
         | None,
         Field(
             description='Platform-specific publishing options. Unknown keys are ignored.'

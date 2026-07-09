@@ -118,34 +118,32 @@ client.posts.create_post(
 
 ### Upload Media
 
+`client.media.upload()` does it in one step: it presigns an upload slot, PUTs the
+raw bytes to PostZen-hosted storage, and returns the public URL to reference in a
+post's `media_items`. The content type is inferred from the file extension (pass
+`content_type=` to override), and `size` is computed for you.
+
 ```python
-from pathlib import Path
-
-import httpx
-
 from postzen import PostZen
 
 client = PostZen()
-path = Path("image.png")
 
-presign = client.media.create_media_presign(
-    filename=path.name,
-    content_type="image/png",
-    size=path.stat().st_size,
-)
+# From a file path (str or os.PathLike)
+media = client.media.upload("./photo.jpg")
+print(media.public_url, media.key, media.type, media.size, media.filename)
 
-httpx.put(
-    presign.uploadUrl,
-    content=path.read_bytes(),
-    headers={"Content-Type": "image/png"},
-).raise_for_status()
+# Or from raw bytes — filename is required so the content type can be inferred
+with open("./photo.jpg", "rb") as fh:
+    media = client.media.upload(fh.read(), filename="photo.jpg")
 
 client.posts.create_post(
     content="Media post",
-    media_items=[{"url": presign.publicUrl}],
+    media_items=[{"url": media.public_url}],
     publish_now=True,
 )
 ```
+
+The async client exposes `await client.media.aupload(...)` with the same signature.
 
 ### List Connected Accounts
 
