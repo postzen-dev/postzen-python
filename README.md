@@ -1,10 +1,17 @@
-# PostZen Python SDK
+<p align="center">
+  <img src=".github/assets/postzen-icon.png" alt="PostZen" width="96" />
+</p>
 
-Official Python SDK for the [PostZen](https://postzen.dev) social publishing API — manage profiles, connect social accounts, upload media, and schedule or publish posts against `https://api.postzen.dev`. Fully typed with pydantic, sync and async.
+<h1 align="center">PostZen Python SDK</h1>
 
-[![PyPI version](https://img.shields.io/pypi/v/postzen-sdk)](https://pypi.org/project/postzen-sdk/) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://pypi.org/project/postzen-sdk/) [![python versions](https://img.shields.io/pypi/pyversions/postzen-sdk)](https://pypi.org/project/postzen-sdk/)
+<p align="center">
+  <a href="https://pypi.org/project/postzen-sdk/"><img src="https://img.shields.io/pypi/v/postzen-sdk" alt="PyPI version" /></a>
+  <a href="https://pypi.org/project/postzen-sdk/"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="license" /></a>
+</p>
 
-This package is auto-generated: when the [PostZen OpenAPI spec](https://docs.postzen.dev/api-reference) changes, CI regenerates the resources, models, and the reference below from `openapi.json` and publishes a new release, so the SDK always matches the current API. The same pipeline keeps the [Node.js SDK](https://github.com/postzen-dev/postzen-node), the [CLI](https://github.com/postzen-dev/postzen-cli), and the [MCP server](https://docs.postzen.dev/mcp) in sync.
+<p align="center"><strong>One API to post everywhere. 8 platforms, zero headaches.</strong></p>
+
+The official Python SDK for the [PostZen API](https://docs.postzen.dev) — schedule and publish social media posts across X/Twitter, Instagram, TikTok, LinkedIn, Facebook, YouTube, Threads, and Pinterest with a single integration.
 
 ## Installation
 
