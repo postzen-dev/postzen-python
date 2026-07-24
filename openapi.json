@@ -36,6 +36,10 @@
 		{
 			"name": "Posts",
 			"description": "Create drafts, scheduled posts, or immediate posts."
+		},
+		{
+			"name": "API Keys",
+			"description": "Manage PostZen API keys programmatically. Creating and deleting keys requires a read-write key with full profile access."
 		}
 	],
 	"paths": {
@@ -680,6 +684,169 @@
 			}
 		},
 		"/v1/posts": {
+			"get": {
+				"tags": [
+					"Posts"
+				],
+				"operationId": "listPosts",
+				"summary": "List posts",
+				"description": "Returns posts created for the profiles available to the API key, newest first. Read-only and read-write API keys are accepted. Published posts include a `platformPostUrl` for each published platform target. Results are capped to the 1000 most recent matching posts.",
+				"parameters": [
+					{
+						"name": "profileId",
+						"in": "query",
+						"description": "Filter posts by profile id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "accountId",
+						"in": "query",
+						"description": "Filter posts to those targeting a specific connected account.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "platform",
+						"in": "query",
+						"description": "Filter posts to those with a target on this platform. `twitter` is accepted as an alias for `x`.",
+						"schema": {
+							"$ref": "#/components/schemas/PublicPlatformInput"
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"description": "Filter posts by status.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"draft",
+								"scheduled",
+								"queued",
+								"publishing",
+								"published",
+								"partially_failed",
+								"failed",
+								"canceled"
+							]
+						}
+					},
+					{
+						"name": "dateFrom",
+						"in": "query",
+						"description": "Only include posts scheduled on or after this ISO 8601 timestamp. Posts without a scheduled time are excluded when a date filter is supplied.",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "dateTo",
+						"in": "query",
+						"description": "Only include posts scheduled on or before this ISO 8601 timestamp. Posts without a scheduled time are excluded when a date filter is supplied.",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "sortBy",
+						"in": "query",
+						"description": "Sort order. `createdAt` sorts by creation time (newest first). `scheduledFor` sorts by scheduled time (newest first) and excludes posts without a scheduled time.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"createdAt",
+								"scheduledFor"
+							],
+							"default": "createdAt"
+						}
+					},
+					{
+						"name": "page",
+						"in": "query",
+						"description": "1-based page number. Defaults to 1.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"default": 1
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size. Defaults to 20.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 20
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Posts returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PostsListResponse"
+								},
+								"example": {
+									"posts": [
+										{
+											"_id": "jx58t2kqm4wr9v3n7c1zp6bs0dh5fg8y",
+											"title": "Launch post",
+											"content": "We shipped the new release.",
+											"status": "published",
+											"scheduledFor": null,
+											"timezone": "UTC",
+											"platforms": [
+												{
+													"platform": "twitter",
+													"accountId": {
+														"_id": "j97kp4mw2xnv6r1t8c3zq5bs9fh0yg4d",
+														"platform": "twitter",
+														"username": "acme",
+														"displayName": "Acme",
+														"isActive": true
+													},
+													"status": "published",
+													"platformPostUrl": "https://x.com/acme/status/1934567890123456789"
+												}
+											]
+										}
+									],
+									"pagination": {
+										"page": 1,
+										"limit": 20,
+										"total": 1,
+										"totalPages": 1
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					}
+				}
+			},
 			"post": {
 				"tags": [
 					"Posts"
@@ -790,6 +957,193 @@
 					}
 				}
 			}
+		},
+		"/v1/api-keys": {
+			"get": {
+				"tags": [
+					"API Keys"
+				],
+				"operationId": "listApiKeys",
+				"summary": "List API keys",
+				"description": "Returns the API keys for the authenticated account. The full key value is never returned; only a masked `keyPreview` is shown. Read-only and read-write API keys are accepted.",
+				"responses": {
+					"200": {
+						"description": "API keys returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeysListResponse"
+								},
+								"example": {
+									"apiKeys": [
+										{
+											"id": "jk91m3xw7ktr5v2n8q4zs0b6hf1yg3pd",
+											"name": "Production key",
+											"keyPreview": "pzn_live_a1b2c3d4e...",
+											"createdAt": "2026-06-13T16:00:00.000Z",
+											"lastUsedAt": "2026-07-22T09:14:00.000Z",
+											"scope": "full",
+											"profileIds": [],
+											"permission": "read-write"
+										},
+										{
+											"id": "jk52t8nqm4wr9v3c7z1p6bs0dh5fg2yx",
+											"name": "Marketing read-only",
+											"keyPreview": "pzn_live_9f8e7d6c5...",
+											"createdAt": "2026-06-19T16:00:00.000Z",
+											"lastUsedAt": null,
+											"scope": "profiles",
+											"profileIds": [
+												{
+													"_id": "jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e",
+													"name": "Marketing Team",
+													"color": "#4caf50"
+												}
+											],
+											"permission": "read"
+										}
+									]
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"500": {
+						"description": "Unexpected server error.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "Failed to list API keys"
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"API Keys"
+				],
+				"operationId": "createApiKey",
+				"summary": "Create an API key",
+				"description": "Creates an API key and returns the full key value exactly once. This endpoint requires a read-write API key with access to all profiles; profile-scoped keys receive a `403`. Store the returned `key` securely — it cannot be retrieved again after this response.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ApiKeyCreateRequest"
+							},
+							"example": {
+								"name": "Production key",
+								"scope": "full",
+								"permission": "read-write"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "API key created.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ApiKeyCreateResponse"
+								},
+								"example": {
+									"message": "API key created successfully",
+									"apiKey": {
+										"id": "jk91m3xw7ktr5v2n8q4zs0b6hf1yg3pd",
+										"name": "Production key",
+										"keyPreview": "pzn_live_3f8c1b7d4...",
+										"createdAt": "2026-07-23T16:00:00.000Z",
+										"lastUsedAt": null,
+										"scope": "full",
+										"profileIds": [],
+										"permission": "read-write",
+										"key": "pzn_live_3f8c1b7d4e90a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8091a2b3c4d5e6f770"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/api-keys/{keyId}": {
+			"parameters": [
+				{
+					"name": "keyId",
+					"in": "path",
+					"required": true,
+					"description": "PostZen API key id.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"delete": {
+				"tags": [
+					"API Keys"
+				],
+				"operationId": "deleteApiKey",
+				"summary": "Delete an API key",
+				"description": "Permanently revokes and deletes an API key. Requires a read-write key with full profile access. A key may delete itself.",
+				"responses": {
+					"200": {
+						"description": "API key deleted.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MessageResponse"
+								},
+								"example": {
+									"message": "API key deleted successfully"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"description": "No API key exists with the given id.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "API key not found"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -884,6 +1238,29 @@
 						},
 						"example": {
 							"error": "Failed to create post"
+						}
+					}
+				}
+			},
+			"TooManyRequests": {
+				"description": "Rate limit exceeded. Retry after the interval indicated by the `Retry-After` header.",
+				"headers": {
+					"Retry-After": {
+						"description": "Number of seconds to wait before retrying.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1
+						}
+					}
+				},
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/RateLimitError"
+						},
+						"example": {
+							"error": "rate_limited",
+							"retryAfter": 30
 						}
 					}
 				}
@@ -1265,6 +1642,42 @@
 					}
 				}
 			},
+			"PostsListResponse": {
+				"type": "object",
+				"required": [
+					"posts",
+					"pagination"
+				],
+				"properties": {
+					"posts": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ApiPost"
+						}
+					},
+					"pagination": {
+						"$ref": "#/components/schemas/Pagination"
+					}
+				}
+			},
+			"RateLimitError": {
+				"type": "object",
+				"required": [
+					"error",
+					"retryAfter"
+				],
+				"properties": {
+					"error": {
+						"type": "string",
+						"const": "rate_limited"
+					},
+					"retryAfter": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "Number of seconds to wait before retrying."
+					}
+				}
+			},
 			"ConnectStartResponse": {
 				"type": "object",
 				"required": [
@@ -1548,6 +1961,7 @@
 			},
 			"InstagramSettings": {
 				"type": "object",
+				"description": "Instagram target settings. `postType` selects the format: `feed` and `story` take exactly one media item, `reel` takes exactly one video, and `carousel` takes 2–10 media items (images and videos may be mixed). Captions are limited to 2,200 characters.",
 				"properties": {
 					"postType": {
 						"type": "string",
@@ -1557,16 +1971,19 @@
 							"reel",
 							"carousel"
 						],
-						"default": "feed"
+						"default": "feed",
+						"description": "Instagram post format. `feed` (default) and `story` publish a single media item; `reel` publishes a single video; `carousel` publishes 2–10 ordered media items and may mix images and videos. Sending multiple media items with `feed` returns a validation error directing you to `carousel`."
 					},
 					"collaborators": {
 						"type": "array",
+						"description": "Up to three Instagram usernames to invite as collaborators. Supported on feed, reel, and carousel posts.",
 						"items": {
 							"type": "string"
 						}
 					},
 					"userTags": {
 						"type": "array",
+						"description": "Photo tags with relative `x`/`y` coordinates from 0 to 1. Feed posts only — user tags are not supported on carousels, reels, or stories.",
 						"items": {
 							"type": "object",
 							"required": [
@@ -1588,10 +2005,12 @@
 						}
 					},
 					"firstComment": {
-						"type": "string"
+						"type": "string",
+						"description": "Posts a first comment after publishing. Supported on feed, reel, and carousel posts. Maximum 2,200 characters."
 					},
 					"shareToFeed": {
-						"type": "boolean"
+						"type": "boolean",
+						"description": "Reels only. Defaults to `true`. Set to `false` to keep the reel off the profile feed."
 					}
 				}
 			},
@@ -1673,6 +2092,11 @@
 							"PUBLIC",
 							"CONNECTIONS"
 						]
+					},
+					"videoTitle": {
+						"type": "string",
+						"maxLength": 200,
+						"description": "Optional title for video posts, shown on the LinkedIn video player. Ignored for non-video posts."
 					}
 				}
 			},
@@ -1913,6 +2337,176 @@
 					"message": {
 						"type": "string",
 						"const": "Post already exists for this request id"
+					}
+				}
+			},
+			"ApiKeyProfileRef": {
+				"type": "object",
+				"required": [
+					"_id",
+					"name",
+					"color"
+				],
+				"properties": {
+					"_id": {
+						"type": "string",
+						"description": "PostZen profile id."
+					},
+					"name": {
+						"type": "string"
+					},
+					"color": {
+						"type": "string",
+						"description": "Hex color in `#rrggbb` format."
+					}
+				}
+			},
+			"ApiKey": {
+				"type": "object",
+				"required": [
+					"id",
+					"name",
+					"keyPreview",
+					"createdAt",
+					"lastUsedAt",
+					"scope",
+					"profileIds",
+					"permission"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "API key id."
+					},
+					"name": {
+						"type": "string",
+						"description": "Human-readable label."
+					},
+					"keyPreview": {
+						"type": "string",
+						"description": "Masked preview of the key, for example `pzn_live_a1b2c3d4e...`. The full key is never retrievable after creation."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"lastUsedAt": {
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"description": "Last time the key authenticated a request, or `null` if it has never been used."
+					},
+					"scope": {
+						"type": "string",
+						"enum": [
+							"full",
+							"profiles"
+						],
+						"description": "`full` grants access to all profiles; `profiles` restricts the key to `profileIds`."
+					},
+					"profileIds": {
+						"type": "array",
+						"description": "Profiles the key is restricted to. Empty for full-scope keys.",
+						"items": {
+							"$ref": "#/components/schemas/ApiKeyProfileRef"
+						}
+					},
+					"permission": {
+						"type": "string",
+						"enum": [
+							"read-write",
+							"read"
+						],
+						"description": "`read` keys may only call `GET` endpoints; `read-write` keys may call every endpoint."
+					}
+				}
+			},
+			"ApiKeyWithSecret": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/ApiKey"
+					},
+					{
+						"type": "object",
+						"required": [
+							"key"
+						],
+						"properties": {
+							"key": {
+								"type": "string",
+								"description": "The full API key. Shown only once in the create response — store it securely, as it cannot be retrieved again."
+							}
+						}
+					}
+				]
+			},
+			"ApiKeysListResponse": {
+				"type": "object",
+				"required": [
+					"apiKeys"
+				],
+				"properties": {
+					"apiKeys": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ApiKey"
+						}
+					}
+				}
+			},
+			"ApiKeyCreateRequest": {
+				"type": "object",
+				"required": [
+					"name"
+				],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100,
+						"description": "Human-readable label for the key."
+					},
+					"scope": {
+						"type": "string",
+						"enum": [
+							"full",
+							"profiles"
+						],
+						"default": "full",
+						"description": "`full` grants access to all profiles; `profiles` restricts the key to `profileIds`."
+					},
+					"profileIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "PostZen profile ids. Required when `scope` is `profiles`, and forbidden when `scope` is `full`."
+					},
+					"permission": {
+						"type": "string",
+						"enum": [
+							"read-write",
+							"read"
+						],
+						"default": "read-write",
+						"description": "`read` keys may only call `GET` endpoints."
+					}
+				}
+			},
+			"ApiKeyCreateResponse": {
+				"type": "object",
+				"required": [
+					"message",
+					"apiKey"
+				],
+				"properties": {
+					"message": {
+						"type": "string"
+					},
+					"apiKey": {
+						"$ref": "#/components/schemas/ApiKeyWithSecret"
 					}
 				}
 			}

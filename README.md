@@ -279,6 +279,7 @@ client.posts.create_post(
 ### Posts
 | Method | Description |
 |--------|-------------|
+| `posts.list_posts()` | List posts |
 | `posts.create_post()` | Create a post |
 
 ## Requirements

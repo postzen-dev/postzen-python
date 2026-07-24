@@ -28,6 +28,7 @@ def test_all_spec_endpoints_are_available(client):
             "create_media_presign",
         ],
         "posts": [
+            "list_posts",
             "create_post",
         ],
     }

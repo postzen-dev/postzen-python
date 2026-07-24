@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 
 from ...models import (
     CreatePostResponse,
+    PostsListResponse,
 )
 
 from ..base import BaseResource
@@ -25,6 +26,38 @@ class PostsResource(BaseResource[Any]):
 
     def __init__(self, client: BaseClient) -> None:
         super().__init__(client)
+
+    def list_posts(self, *, profile_id: str | None = None, account_id: str | None = None, platform: str | None = None, status: str | None = None, date_from: datetime | str | None = None, date_to: datetime | str | None = None, sort_by: str | None = 'createdAt', page: int | None = 1, limit: int | None = 20) -> PostsListResponse:
+        """List posts."""
+        params = self._build_params(
+            profile_id=profile_id,
+            account_id=account_id,
+            platform=platform,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+            sort_by=sort_by,
+            page=page,
+            limit=limit,
+        )
+        data = self._client._get('/v1/posts', params=params)
+        return PostsListResponse.model_validate(data)
+
+    async def alist_posts(self, *, profile_id: str | None = None, account_id: str | None = None, platform: str | None = None, status: str | None = None, date_from: datetime | str | None = None, date_to: datetime | str | None = None, sort_by: str | None = 'createdAt', page: int | None = 1, limit: int | None = 20) -> PostsListResponse:
+        """List posts (async)."""
+        params = self._build_params(
+            profile_id=profile_id,
+            account_id=account_id,
+            platform=platform,
+            status=status,
+            date_from=date_from,
+            date_to=date_to,
+            sort_by=sort_by,
+            page=page,
+            limit=limit,
+        )
+        data = await self._client._aget('/v1/posts', params=params)
+        return PostsListResponse.model_validate(data)
 
     def create_post(self, *, x_request_id: str | None = None, title: str | None = None, content: str | None = '', media_items: list[dict[str, Any]] | None = None, platforms: list[dict[str, Any]] | None = None, scheduled_for: datetime | str | None = None, publish_now: bool | None = None, is_draft: bool | None = None, timezone: str | None = 'UTC', tags: list[str] | None = None) -> CreatePostResponse:
         """Create a post."""

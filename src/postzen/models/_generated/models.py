@@ -201,6 +201,17 @@ class AccountsListResponse(BaseModel):
     pagination: Pagination | None = None
 
 
+class RateLimitError(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    error: Literal['rate_limited']
+    retryAfter: Annotated[
+        int, Field(description='Number of seconds to wait before retrying.', ge=1)
+    ]
+
+
 class ConnectStartResponse(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -334,11 +345,36 @@ class InstagramSettings(BaseModel):
         extra='ignore',
         populate_by_name=True,
     )
-    postType: Literal['feed', 'story', 'reel', 'carousel'] | None = 'feed'
-    collaborators: list[str] | None = None
-    userTags: list[UserTag] | None = None
-    firstComment: str | None = None
-    shareToFeed: bool | None = None
+    postType: Annotated[
+        Literal['feed', 'story', 'reel', 'carousel'] | None,
+        Field(
+            description='Instagram post format. `feed` (default) and `story` publish a single media item; `reel` publishes a single video; `carousel` publishes 2–10 ordered media items and may mix images and videos. Sending multiple media items with `feed` returns a validation error directing you to `carousel`.'
+        ),
+    ] = 'feed'
+    collaborators: Annotated[
+        list[str] | None,
+        Field(
+            description='Up to three Instagram usernames to invite as collaborators. Supported on feed, reel, and carousel posts.'
+        ),
+    ] = None
+    userTags: Annotated[
+        list[UserTag] | None,
+        Field(
+            description='Photo tags with relative `x`/`y` coordinates from 0 to 1. Feed posts only — user tags are not supported on carousels, reels, or stories.'
+        ),
+    ] = None
+    firstComment: Annotated[
+        str | None,
+        Field(
+            description='Posts a first comment after publishing. Supported on feed, reel, and carousel posts. Maximum 2,200 characters.'
+        ),
+    ] = None
+    shareToFeed: Annotated[
+        bool | None,
+        Field(
+            description='Reels only. Defaults to `true`. Set to `false` to keep the reel off the profile feed.'
+        ),
+    ] = None
 
 
 class FacebookSettings(BaseModel):
@@ -389,6 +425,13 @@ class LinkedInSettings(BaseModel):
         populate_by_name=True,
     )
     visibility: Literal['PUBLIC', 'CONNECTIONS'] | None = None
+    videoTitle: Annotated[
+        str | None,
+        Field(
+            description='Optional title for video posts, shown on the LinkedIn video player. Ignored for non-video posts.',
+            max_length=200,
+        ),
+    ] = None
 
 
 class XSettings(BaseModel):
@@ -478,6 +521,117 @@ class ApiPostAccount(BaseModel):
     username: str
     displayName: str
     isActive: bool
+
+
+class ApiKeyProfileRef(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    field_id: Annotated[str, Field(alias='_id', description='PostZen profile id.')]
+    name: str
+    color: Annotated[str, Field(description='Hex color in `#rrggbb` format.')]
+
+
+class ApiKey(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='API key id.')]
+    name: Annotated[str, Field(description='Human-readable label.')]
+    keyPreview: Annotated[
+        str,
+        Field(
+            description='Masked preview of the key, for example `pzn_live_a1b2c3d4e...`. The full key is never retrievable after creation.'
+        ),
+    ]
+    createdAt: datetime
+    lastUsedAt: Annotated[
+        datetime | None,
+        Field(
+            description='Last time the key authenticated a request, or `null` if it has never been used.'
+        ),
+    ]
+    scope: Annotated[
+        Literal['full', 'profiles'],
+        Field(
+            description='`full` grants access to all profiles; `profiles` restricts the key to `profileIds`.'
+        ),
+    ]
+    profileIds: Annotated[
+        list[ApiKeyProfileRef],
+        Field(
+            description='Profiles the key is restricted to. Empty for full-scope keys.'
+        ),
+    ]
+    permission: Annotated[
+        Literal['read-write', 'read'],
+        Field(
+            description='`read` keys may only call `GET` endpoints; `read-write` keys may call every endpoint.'
+        ),
+    ]
+
+
+class ApiKeyWithSecret(ApiKey):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    key: Annotated[
+        str,
+        Field(
+            description='The full API key. Shown only once in the create response — store it securely, as it cannot be retrieved again.'
+        ),
+    ]
+
+
+class ApiKeysListResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    apiKeys: list[ApiKey]
+
+
+class ApiKeyCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    name: Annotated[
+        str,
+        Field(
+            description='Human-readable label for the key.',
+            max_length=100,
+            min_length=1,
+        ),
+    ]
+    scope: Annotated[
+        Literal['full', 'profiles'] | None,
+        Field(
+            description='`full` grants access to all profiles; `profiles` restricts the key to `profileIds`.'
+        ),
+    ] = 'full'
+    profileIds: Annotated[
+        list[str] | None,
+        Field(
+            description='PostZen profile ids. Required when `scope` is `profiles`, and forbidden when `scope` is `full`.'
+        ),
+    ] = None
+    permission: Annotated[
+        Literal['read-write', 'read'] | None,
+        Field(description='`read` keys may only call `GET` endpoints.'),
+    ] = 'read-write'
+
+
+class ApiKeyCreateResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: str
+    apiKey: ApiKeyWithSecret
 
 
 class ApiPostPlatformResult(BaseModel):
@@ -579,6 +733,15 @@ class CreatePostReplayResponse(BaseModel):
     )
     existingPost: ApiPost
     message: Literal['Post already exists for this request id']
+
+
+class PostsListResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    posts: list[ApiPost]
+    pagination: Pagination
 
 
 class CreatePostRequest(BaseModel):
