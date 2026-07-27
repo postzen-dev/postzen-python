@@ -460,9 +460,7 @@ class PinterestSettings(BaseModel):
         extra='ignore',
         populate_by_name=True,
     )
-    boardId: Annotated[
-        str | None, Field(description='Pinterest board to publish the pin to.')
-    ] = None
+    boardId: Annotated[str, Field(description='Pinterest board to publish the pin to.')]
     title: Annotated[str | None, Field(description='Pin title.')] = None
     link: Annotated[str | None, Field(description='Destination link for the pin.')] = (
         None

@@ -39,6 +39,7 @@
 		},
 		{
 			"name": "API Keys",
+			"x-displayName": "API Keys",
 			"description": "Manage PostZen API keys programmatically. Creating and deleting keys requires a read-write key with full profile access."
 		}
 	],
@@ -2153,6 +2154,9 @@
 			},
 			"PinterestSettings": {
 				"type": "object",
+				"required": [
+					"boardId"
+				],
 				"properties": {
 					"boardId": {
 						"type": "string",
