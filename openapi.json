@@ -38,6 +38,10 @@
 			"description": "Create drafts, scheduled posts, or immediate posts."
 		},
 		{
+			"name": "Analytics",
+			"description": "Read post, engagement, follower, and posting-time analytics, and synchronize external posts."
+		},
+		{
 			"name": "API Keys",
 			"x-displayName": "API Keys",
 			"description": "Manage PostZen API keys programmatically. Creating and deleting keys requires a read-write key with full profile access."
@@ -461,7 +465,7 @@
 				],
 				"operationId": "createConnectUrl",
 				"summary": "Create an OAuth connect URL",
-				"description": "Initiates an OAuth connection flow and returns an authorization URL to redirect the user to. The OAuth state expires after 10 minutes. This endpoint requires a read-write API key.\n\nFor `bluesky`, the returned `authUrl` is a PostZen-hosted page where the user enters their Bluesky handle and app password (no developer app or OAuth redirect is required); the connection completes when they submit that form.",
+				"description": "Initiates an OAuth connection flow and returns an authorization URL to redirect the user to. The OAuth state expires after 10 minutes. This endpoint requires a read-write API key.\n\nFor `bluesky`, the returned `authUrl` is a PostZen-hosted page where the user enters their Bluesky handle and app password (no developer app or OAuth redirect is required); the connection completes when they submit that form.\n\nFor `telegram`, the returned `authUrl` is a PostZen-hosted page that issues a short-lived access code (there is no OAuth grant and no Telegram authorization screen); the connection completes when the user adds @PostZenScheduleBot as an administrator of a channel or group and sends that code to the bot.",
 				"parameters": [
 					{
 						"name": "profileId",
@@ -959,6 +963,680 @@
 				}
 			}
 		},
+		"/v1/analytics": {
+			"get": {
+				"tags": [
+					"Analytics"
+				],
+				"operationId": "getAnalytics",
+				"summary": "Get post analytics",
+				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns one post when `postId` is supplied. Otherwise returns a paginated analytics list with aggregate overview metrics.",
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "postId",
+						"in": "query",
+						"description": "PostZen post id or platform post id. When supplied, the response is a single analytics object.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "platform",
+						"in": "query",
+						"description": "Platform slug, or `all` for every platform.",
+						"schema": {
+							"oneOf": [
+								{
+									"$ref": "#/components/schemas/AnalyticsPlatform"
+								},
+								{
+									"type": "string",
+									"const": "all"
+								}
+							],
+							"default": "all"
+						}
+					},
+					{
+						"name": "profileId",
+						"in": "query",
+						"description": "Filter by PostZen profile id.",
+						"schema": {
+							"type": "string",
+							"default": "all"
+						}
+					},
+					{
+						"name": "accountId",
+						"in": "query",
+						"description": "Filter by connected social account id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "source",
+						"in": "query",
+						"description": "Filter by posts published through PostZen or imported from a platform.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsSource"
+						}
+					},
+					{
+						"name": "fromDate",
+						"in": "query",
+						"description": "Inclusive range start. Accepts `YYYY-MM-DD` or an ISO 8601 datetime. Defaults to 90 days before `toDate`.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsDate"
+						}
+					},
+					{
+						"name": "toDate",
+						"in": "query",
+						"description": "Inclusive range end. Accepts `YYYY-MM-DD` or an ISO 8601 datetime. Defaults to the current time.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsDate"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 50
+						}
+					},
+					{
+						"name": "page",
+						"in": "query",
+						"description": "1-based page number.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"default": 1
+						}
+					},
+					{
+						"name": "sortBy",
+						"in": "query",
+						"description": "Field used to order list results.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"date",
+								"engagement",
+								"impressions",
+								"reach",
+								"likes",
+								"comments",
+								"shares",
+								"saves",
+								"clicks",
+								"views"
+							],
+							"default": "date"
+						}
+					},
+					{
+						"name": "order",
+						"in": "query",
+						"description": "Sort direction.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"asc",
+								"desc"
+							],
+							"default": "desc"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Single-post analytics or a paginated analytics list.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"oneOf": [
+										{
+											"$ref": "#/components/schemas/AnalyticsPost"
+										},
+										{
+											"$ref": "#/components/schemas/AnalyticsListResponse"
+										}
+									]
+								}
+							}
+						}
+					},
+					"202": {
+						"description": "The first analytics synchronization is pending; stored post data is returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AnalyticsPost"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"description": "Analytics entitlement required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"424": {
+						"description": "All platform analytics fetches failed.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/analytics/post-timeline": {
+			"get": {
+				"tags": [
+					"Analytics"
+				],
+				"operationId": "getPostTimeline",
+				"summary": "Get a post analytics timeline",
+				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns one daily row per platform for a PostZen post, imported external post, or platform post id.",
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "postId",
+						"in": "query",
+						"required": true,
+						"description": "PostZen post id, external post id, analytics row id, or platform post id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "fromDate",
+						"in": "query",
+						"description": "Inclusive range start. Defaults to 90 days before `toDate`.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsDate"
+						}
+					},
+					{
+						"name": "toDate",
+						"in": "query",
+						"description": "Inclusive range end. Defaults to the current time.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsDate"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Post timeline returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PostTimelineResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"description": "Analytics entitlement required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/analytics/daily-metrics": {
+			"get": {
+				"tags": [
+					"Analytics"
+				],
+				"operationId": "getDailyMetrics",
+				"summary": "Get daily analytics metrics",
+				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns daily aggregate metrics and a per-platform breakdown. Publish attribution assigns lifetime metrics to the post's publish date; received attribution assigns metric deltas to the day they were observed.",
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "platform",
+						"in": "query",
+						"description": "Filter by platform.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsPlatform"
+						}
+					},
+					{
+						"name": "profileId",
+						"in": "query",
+						"description": "Filter by PostZen profile id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "accountId",
+						"in": "query",
+						"description": "Filter by connected social account id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "fromDate",
+						"in": "query",
+						"description": "Inclusive range start. Defaults to 180 days before `toDate`.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsDate"
+						}
+					},
+					{
+						"name": "toDate",
+						"in": "query",
+						"description": "Inclusive range end. Defaults to the current time.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsDate"
+						}
+					},
+					{
+						"name": "source",
+						"in": "query",
+						"description": "Filter by PostZen-published or externally imported posts.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsSource"
+						}
+					},
+					{
+						"name": "attribution",
+						"in": "query",
+						"description": "Controls whether lifetime metrics are assigned to publish dates or daily deltas to receipt dates.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"publish",
+								"received"
+							],
+							"default": "publish"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Daily metrics returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/DailyMetricsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"description": "Analytics entitlement required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/analytics/best-time": {
+			"get": {
+				"tags": [
+					"Analytics"
+				],
+				"operationId": "getBestTimeToPost",
+				"summary": "Get the best times to post",
+				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns historical engagement slots grouped by UTC day of week and hour, ordered by average engagement descending.",
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "platform",
+						"in": "query",
+						"description": "Filter by platform.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsPlatform"
+						}
+					},
+					{
+						"name": "profileId",
+						"in": "query",
+						"description": "Filter by PostZen profile id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "accountId",
+						"in": "query",
+						"description": "Filter by connected social account id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "source",
+						"in": "query",
+						"description": "Filter by PostZen-published or externally imported posts.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsSource"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Best posting slots returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/BestTimeResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"description": "Analytics entitlement required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/accounts/follower-stats": {
+			"get": {
+				"tags": [
+					"Analytics"
+				],
+				"operationId": "getFollowerStats",
+				"summary": "Get follower statistics",
+				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns follower history and growth for connected accounts at daily, weekly, or monthly granularity.",
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"parameters": [
+					{
+						"name": "accountIds",
+						"in": "query",
+						"description": "Comma-separated connected account ids. Omit to include every accessible account.",
+						"schema": {
+							"type": "string"
+						},
+						"example": "j97kp4mw2xnv6r1t8c3zq5bs9fh0yg4d,j86km3nv1xpw5r2t9c4zq7bs0fh6yg8e"
+					},
+					{
+						"name": "profileId",
+						"in": "query",
+						"description": "Filter by PostZen profile id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "fromDate",
+						"in": "query",
+						"description": "Inclusive range start. Defaults to 30 days before `toDate`.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsDate"
+						}
+					},
+					{
+						"name": "toDate",
+						"in": "query",
+						"description": "Inclusive range end. Defaults to the current time.",
+						"schema": {
+							"$ref": "#/components/schemas/AnalyticsDate"
+						}
+					},
+					{
+						"name": "granularity",
+						"in": "query",
+						"description": "Follower history bucket size.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"daily",
+								"weekly",
+								"monthly"
+							],
+							"default": "daily"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Follower statistics returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/FollowerStatsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"description": "Analytics entitlement required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/posts/sync-external": {
+			"post": {
+				"tags": [
+					"Analytics"
+				],
+				"operationId": "syncExternalPosts",
+				"summary": "Synchronize external posts",
+				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nFetches an account's latest posts published directly on its platform. Supplying `url` or `postId` searches for a specific post. Requests made within the per-account debounce window return cached results with `synced.skipped` set to true.",
+				"security": [
+					{
+						"bearerAuth": []
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/SyncExternalPostsRequest"
+							},
+							"example": {
+								"accountId": "j97kp4mw2xnv6r1t8c3zq5bs9fh0yg4d",
+								"url": "https://www.pinterest.com/pin/1234567890/"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "External posts synchronized or served from the debounce cache.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/SyncExternalPostsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request, unsupported platform, or platform synchronization failure.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/AnalyticsErrorResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"description": "Analytics entitlement required.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
 		"/v1/api-keys": {
 			"get": {
 				"tags": [
@@ -1279,6 +1957,748 @@
 					}
 				}
 			},
+			"AnalyticsErrorResponse": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/ErrorResponse"
+					},
+					{
+						"type": "object",
+						"properties": {
+							"platform": {
+								"$ref": "#/components/schemas/AnalyticsPlatform"
+							},
+							"platformError": {
+								"type": "string",
+								"description": "Original error detail returned by the social platform."
+							}
+						}
+					}
+				]
+			},
+			"AnalyticsDate": {
+				"oneOf": [
+					{
+						"type": "string",
+						"format": "date"
+					},
+					{
+						"type": "string",
+						"format": "date-time"
+					}
+				],
+				"description": "A `YYYY-MM-DD` calendar date or ISO 8601 datetime."
+			},
+			"AnalyticsPlatform": {
+				"type": "string",
+				"enum": [
+					"x",
+					"instagram",
+					"tiktok",
+					"linkedin",
+					"facebook",
+					"youtube",
+					"threads",
+					"pinterest",
+					"bluesky",
+					"telegram"
+				]
+			},
+			"AnalyticsSource": {
+				"type": "string",
+				"enum": [
+					"all",
+					"postzen",
+					"external"
+				],
+				"default": "all"
+			},
+			"AnalyticsMetricTotals": {
+				"type": "object",
+				"required": [
+					"impressions",
+					"reach",
+					"likes",
+					"comments",
+					"shares",
+					"saves",
+					"clicks",
+					"views"
+				],
+				"properties": {
+					"impressions": {
+						"type": "number"
+					},
+					"reach": {
+						"type": "number"
+					},
+					"likes": {
+						"type": "number"
+					},
+					"comments": {
+						"type": "number"
+					},
+					"shares": {
+						"type": "number"
+					},
+					"saves": {
+						"type": "number"
+					},
+					"clicks": {
+						"type": "number"
+					},
+					"views": {
+						"type": "number"
+					}
+				}
+			},
+			"AnalyticsMetrics": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/AnalyticsMetricTotals"
+					},
+					{
+						"type": "object",
+						"required": [
+							"engagementRate",
+							"lastUpdated"
+						],
+						"properties": {
+							"engagementRate": {
+								"type": "number",
+								"description": "Interaction count divided by impressions, multiplied by 100 and rounded to two decimals."
+							},
+							"lastUpdated": {
+								"type": [
+									"string",
+									"null"
+								],
+								"format": "date-time"
+							}
+						}
+					}
+				]
+			},
+			"AnalyticsMediaItem": {
+				"type": "object",
+				"required": [
+					"type",
+					"url",
+					"thumbnail"
+				],
+				"properties": {
+					"type": {
+						"type": "string"
+					},
+					"url": {
+						"type": "string",
+						"format": "uri"
+					},
+					"thumbnail": {
+						"type": "string",
+						"format": "uri"
+					}
+				}
+			},
+			"PlatformAnalytics": {
+				"type": "object",
+				"required": [
+					"platform",
+					"status",
+					"platformPostId",
+					"accountId",
+					"accountUsername",
+					"analytics",
+					"syncStatus",
+					"platformPostUrl",
+					"errorMessage"
+				],
+				"properties": {
+					"platform": {
+						"$ref": "#/components/schemas/AnalyticsPlatform"
+					},
+					"status": {
+						"type": "string"
+					},
+					"platformPostId": {
+						"type": "string"
+					},
+					"accountId": {
+						"type": "string"
+					},
+					"accountUsername": {
+						"type": "string"
+					},
+					"analytics": {
+						"$ref": "#/components/schemas/AnalyticsMetrics"
+					},
+					"syncStatus": {
+						"type": "string",
+						"enum": [
+							"synced",
+							"pending",
+							"failed"
+						]
+					},
+					"platformPostUrl": {
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "uri"
+					},
+					"errorMessage": {
+						"type": [
+							"string",
+							"null"
+						]
+					}
+				}
+			},
+			"AnalyticsPost": {
+				"type": "object",
+				"required": [
+					"postId",
+					"postzenPostId",
+					"status",
+					"content",
+					"scheduledFor",
+					"publishedAt",
+					"analytics",
+					"platformAnalytics",
+					"platform",
+					"platformPostUrl",
+					"isExternal",
+					"syncStatus",
+					"message",
+					"thumbnailUrl",
+					"mediaType",
+					"mediaItems"
+				],
+				"properties": {
+					"postId": {
+						"type": "string"
+					},
+					"postzenPostId": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"status": {
+						"type": "string"
+					},
+					"content": {
+						"type": "string"
+					},
+					"scheduledFor": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"publishedAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"analytics": {
+						"$ref": "#/components/schemas/AnalyticsMetrics"
+					},
+					"platformAnalytics": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PlatformAnalytics"
+						}
+					},
+					"platform": {
+						"$ref": "#/components/schemas/AnalyticsPlatform"
+					},
+					"platformPostUrl": {
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "uri"
+					},
+					"isExternal": {
+						"type": "boolean"
+					},
+					"syncStatus": {
+						"type": "string",
+						"enum": [
+							"synced",
+							"pending",
+							"failed"
+						]
+					},
+					"message": {
+						"type": [
+							"string",
+							"null"
+						]
+					},
+					"thumbnailUrl": {
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "uri"
+					},
+					"mediaType": {
+						"type": [
+							"string",
+							"null"
+						],
+						"enum": [
+							"image",
+							"video",
+							"text",
+							"carousel",
+							null
+						]
+					},
+					"mediaItems": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/AnalyticsMediaItem"
+						}
+					}
+				}
+			},
+			"AnalyticsOverview": {
+				"type": "object",
+				"required": [
+					"totalPosts",
+					"totals",
+					"avgEngagementRate"
+				],
+				"properties": {
+					"totalPosts": {
+						"type": "number"
+					},
+					"totals": {
+						"$ref": "#/components/schemas/AnalyticsMetricTotals"
+					},
+					"avgEngagementRate": {
+						"type": "number"
+					}
+				}
+			},
+			"AnalyticsListResponse": {
+				"type": "object",
+				"required": [
+					"posts",
+					"pagination",
+					"overview",
+					"truncated"
+				],
+				"properties": {
+					"posts": {
+						"type": "array",
+						"description": "One entry per PostZen post, not per platform target. A post published to several platforms appears once, with one `platformAnalytics` entry per platform and `analytics` summed across them; `platform` is that post's only platform when it has one. Posts imported from a platform always appear on their own. `pagination.total` and `overview.totalPosts` count these grouped entries.",
+						"items": {
+							"$ref": "#/components/schemas/AnalyticsPost"
+						}
+					},
+					"pagination": {
+						"$ref": "#/components/schemas/Pagination"
+					},
+					"overview": {
+						"$ref": "#/components/schemas/AnalyticsOverview"
+					},
+					"truncated": {
+						"type": "boolean",
+						"description": "True when the requested window contained more posts than a single response can scan. `pagination.total` and `overview` then describe the most recent slice of the window rather than all of it; narrow `dateFrom`/`dateTo`, `accountId`, or `platform` to get exact totals."
+					}
+				}
+			},
+			"PostTimelineResponse": {
+				"type": "object",
+				"required": [
+					"postId",
+					"timeline"
+				],
+				"properties": {
+					"postId": {
+						"type": "string"
+					},
+					"timeline": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": [
+								"date",
+								"platform",
+								"platformPostId",
+								"impressions",
+								"reach",
+								"likes",
+								"comments",
+								"shares",
+								"saves",
+								"clicks",
+								"views"
+							],
+							"properties": {
+								"date": {
+									"type": "string",
+									"format": "date"
+								},
+								"platform": {
+									"$ref": "#/components/schemas/AnalyticsPlatform"
+								},
+								"platformPostId": {
+									"type": "string"
+								},
+								"impressions": {
+									"type": "number"
+								},
+								"reach": {
+									"type": "number"
+								},
+								"likes": {
+									"type": "number"
+								},
+								"comments": {
+									"type": "number"
+								},
+								"shares": {
+									"type": "number"
+								},
+								"saves": {
+									"type": "number"
+								},
+								"clicks": {
+									"type": "number"
+								},
+								"views": {
+									"type": "number"
+								}
+							}
+						}
+					}
+				}
+			},
+			"DailyMetricsResponse": {
+				"type": "object",
+				"required": [
+					"dailyData",
+					"platformBreakdown"
+				],
+				"properties": {
+					"dailyData": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": [
+								"date",
+								"postCount",
+								"platforms",
+								"metrics"
+							],
+							"properties": {
+								"date": {
+									"type": "string",
+									"format": "date"
+								},
+								"postCount": {
+									"type": "number"
+								},
+								"platforms": {
+									"type": "object",
+									"additionalProperties": {
+										"type": "number"
+									}
+								},
+								"metrics": {
+									"$ref": "#/components/schemas/AnalyticsMetricTotals"
+								}
+							}
+						}
+					},
+					"platformBreakdown": {
+						"type": "array",
+						"items": {
+							"allOf": [
+								{
+									"$ref": "#/components/schemas/AnalyticsMetricTotals"
+								},
+								{
+									"type": "object",
+									"required": [
+										"platform",
+										"postCount"
+									],
+									"properties": {
+										"platform": {
+											"$ref": "#/components/schemas/AnalyticsPlatform"
+										},
+										"postCount": {
+											"type": "number"
+										}
+									}
+								}
+							]
+						}
+					}
+				}
+			},
+			"BestTimeResponse": {
+				"type": "object",
+				"required": [
+					"slots"
+				],
+				"properties": {
+					"slots": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": [
+								"day_of_week",
+								"hour",
+								"avg_engagement",
+								"post_count"
+							],
+							"properties": {
+								"day_of_week": {
+									"type": "integer",
+									"minimum": 0,
+									"maximum": 6,
+									"description": "UTC day of week, where 0 is Sunday."
+								},
+								"hour": {
+									"type": "integer",
+									"minimum": 0,
+									"maximum": 23
+								},
+								"avg_engagement": {
+									"type": "number"
+								},
+								"post_count": {
+									"type": "number"
+								}
+							}
+						}
+					}
+				}
+			},
+			"FollowerStatsResponse": {
+				"type": "object",
+				"required": [
+					"accounts",
+					"stats",
+					"dateRange",
+					"granularity"
+				],
+				"properties": {
+					"accounts": {
+						"type": "array",
+						"items": {
+							"type": "object",
+							"required": [
+								"_id",
+								"platform",
+								"username",
+								"currentFollowers",
+								"growth",
+								"growthPercentage",
+								"dataPoints"
+							],
+							"properties": {
+								"_id": {
+									"type": "string"
+								},
+								"platform": {
+									"$ref": "#/components/schemas/AnalyticsPlatform"
+								},
+								"username": {
+									"type": "string"
+								},
+								"currentFollowers": {
+									"type": "number"
+								},
+								"growth": {
+									"type": "number"
+								},
+								"growthPercentage": {
+									"type": "number"
+								},
+								"dataPoints": {
+									"type": "number"
+								}
+							}
+						}
+					},
+					"stats": {
+						"type": "object",
+						"additionalProperties": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"required": [
+									"date",
+									"followers"
+								],
+								"properties": {
+									"date": {
+										"type": "string",
+										"format": "date"
+									},
+									"followers": {
+										"type": "number"
+									}
+								}
+							}
+						}
+					},
+					"dateRange": {
+						"type": "object",
+						"required": [
+							"from",
+							"to"
+						],
+						"properties": {
+							"from": {
+								"type": "string",
+								"format": "date-time"
+							},
+							"to": {
+								"type": "string",
+								"format": "date-time"
+							}
+						}
+					},
+					"granularity": {
+						"type": "string",
+						"enum": [
+							"daily",
+							"weekly",
+							"monthly"
+						]
+					}
+				}
+			},
+			"SyncExternalPostsRequest": {
+				"type": "object",
+				"required": [
+					"accountId"
+				],
+				"properties": {
+					"accountId": {
+						"type": "string"
+					},
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "Optional platform post URL to locate."
+					},
+					"postId": {
+						"type": "string",
+						"description": "Optional platform post id to locate."
+					}
+				}
+			},
+			"ExternalSyncedPost": {
+				"type": "object",
+				"required": [
+					"platform",
+					"platformPostId",
+					"platformPostUrl",
+					"content",
+					"publishedAt",
+					"mediaType",
+					"mediaUrl",
+					"thumbnailUrl",
+					"mediaItems",
+					"analytics"
+				],
+				"properties": {
+					"platform": {
+						"$ref": "#/components/schemas/AnalyticsPlatform"
+					},
+					"platformPostId": {
+						"type": "string"
+					},
+					"platformPostUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"content": {
+						"type": "string"
+					},
+					"publishedAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"mediaType": {
+						"type": "string"
+					},
+					"mediaUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"thumbnailUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"mediaItems": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/AnalyticsMediaItem"
+						}
+					},
+					"analytics": {
+						"$ref": "#/components/schemas/AnalyticsMetrics"
+					}
+				}
+			},
+			"SyncExternalPostsResponse": {
+				"type": "object",
+				"required": [
+					"synced",
+					"found",
+					"post",
+					"posts"
+				],
+				"properties": {
+					"synced": {
+						"type": "object",
+						"required": [
+							"postsFound",
+							"postsSynced",
+							"skipped"
+						],
+						"properties": {
+							"postsFound": {
+								"type": "number"
+							},
+							"postsSynced": {
+								"type": "number"
+							},
+							"skipped": {
+								"type": "boolean"
+							}
+						}
+					},
+					"found": {
+						"type": "boolean"
+					},
+					"post": {
+						"oneOf": [
+							{
+								"$ref": "#/components/schemas/ExternalSyncedPost"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"posts": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/ExternalSyncedPost"
+						}
+					}
+				}
+			},
 			"ConnectCompleteErrorResponse": {
 				"type": "object",
 				"required": [
@@ -1366,7 +2786,8 @@
 					"youtube",
 					"threads",
 					"pinterest",
-					"bluesky"
+					"bluesky",
+					"telegram"
 				]
 			},
 			"PublicPlatformOutput": {
@@ -1380,7 +2801,8 @@
 					"youtube",
 					"threads",
 					"pinterest",
-					"bluesky"
+					"bluesky",
+					"telegram"
 				]
 			},
 			"Profile": {
@@ -1957,6 +3379,9 @@
 					},
 					{
 						"$ref": "#/components/schemas/BlueskySettings"
+					},
+					{
+						"$ref": "#/components/schemas/TelegramSettings"
 					}
 				]
 			},
@@ -2198,6 +3623,32 @@
 					"disableLinkCard": {
 						"type": "boolean",
 						"description": "When true, PostZen skips generating an external link preview card for the first URL in the post."
+					}
+				}
+			},
+			"TelegramSettings": {
+				"type": "object",
+				"description": "Telegram target settings. Text-only posts allow 4,096 characters; attaching any media caps the text at 1,024 characters as a caption. A post carries 1-10 media items and may mix photos and videos in one album, but a GIF must be posted on its own. Telegram reports no post analytics.",
+				"properties": {
+					"parseMode": {
+						"type": "string",
+						"enum": [
+							"html",
+							"markdownv2"
+						],
+						"description": "Formatting mode for the message or caption. Omit to send plain text, which is the default. `html` is recommended: it only requires escaping `<`, `>`, and `&`, whereas `markdownv2` requires escaping every one of `_ * [ ] ( ) ~ ` > # + - = | { } . !` and rejects the whole message otherwise."
+					},
+					"disableNotification": {
+						"type": "boolean",
+						"description": "When true, members receive the post silently, with no sound or vibration."
+					},
+					"disableLinkPreview": {
+						"type": "boolean",
+						"description": "When true, suppresses the link preview card for URLs in the text. Applies to text-only posts; a post with media has no link preview."
+					},
+					"protectContent": {
+						"type": "boolean",
+						"description": "When true, Telegram blocks forwarding and saving of the post."
 					}
 				}
 			},

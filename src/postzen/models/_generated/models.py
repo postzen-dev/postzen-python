@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from datetime import date as date_aliased
 from datetime import datetime
 from typing import Annotated, Literal
 
@@ -15,6 +16,343 @@ class ErrorResponse(BaseModel):
         populate_by_name=True,
     )
     error: str
+
+
+class AnalyticsDate(RootModel[date_aliased | datetime]):
+    root: Annotated[
+        date_aliased | datetime,
+        Field(description='A `YYYY-MM-DD` calendar date or ISO 8601 datetime.'),
+    ]
+
+
+class AnalyticsSource(RootModel[Literal['all', 'postzen', 'external']]):
+    root: Literal['all', 'postzen', 'external'] = 'all'
+
+
+class AnalyticsMetricTotals(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    impressions: float
+    reach: float
+    likes: float
+    comments: float
+    shares: float
+    saves: float
+    clicks: float
+    views: float
+
+
+class AnalyticsMetrics(AnalyticsMetricTotals):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    engagementRate: Annotated[
+        float,
+        Field(
+            description='Interaction count divided by impressions, multiplied by 100 and rounded to two decimals.'
+        ),
+    ]
+    lastUpdated: datetime | None
+
+
+class AnalyticsMediaItem(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    type: str
+    url: str
+    thumbnail: str
+
+
+class PlatformAnalytics(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    platform: Literal[
+        'x',
+        'instagram',
+        'tiktok',
+        'linkedin',
+        'facebook',
+        'youtube',
+        'threads',
+        'pinterest',
+        'bluesky',
+        'telegram',
+    ]
+    status: str
+    platformPostId: str
+    accountId: str
+    accountUsername: str
+    analytics: AnalyticsMetrics
+    syncStatus: Literal['synced', 'pending', 'failed']
+    platformPostUrl: str | None
+    errorMessage: str | None
+
+
+class AnalyticsPost(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    postId: str
+    postzenPostId: str | None
+    status: str
+    content: str
+    scheduledFor: datetime
+    publishedAt: datetime
+    analytics: AnalyticsMetrics
+    platformAnalytics: list[PlatformAnalytics]
+    platform: Literal[
+        'x',
+        'instagram',
+        'tiktok',
+        'linkedin',
+        'facebook',
+        'youtube',
+        'threads',
+        'pinterest',
+        'bluesky',
+        'telegram',
+    ]
+    platformPostUrl: str | None
+    isExternal: bool
+    syncStatus: Literal['synced', 'pending', 'failed']
+    message: str | None
+    thumbnailUrl: str | None
+    mediaType: Literal['image', 'video', 'text', 'carousel'] | None
+    mediaItems: list[AnalyticsMediaItem]
+
+
+class AnalyticsOverview(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    totalPosts: float
+    totals: AnalyticsMetricTotals
+    avgEngagementRate: float
+
+
+class TimelineItem(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    date: date_aliased
+    platform: Literal[
+        'x',
+        'instagram',
+        'tiktok',
+        'linkedin',
+        'facebook',
+        'youtube',
+        'threads',
+        'pinterest',
+        'bluesky',
+        'telegram',
+    ]
+    platformPostId: str
+    impressions: float
+    reach: float
+    likes: float
+    comments: float
+    shares: float
+    saves: float
+    clicks: float
+    views: float
+
+
+class PostTimelineResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    postId: str
+    timeline: list[TimelineItem]
+
+
+class DailyDatum(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    date: date_aliased
+    postCount: float
+    platforms: dict[str, float]
+    metrics: AnalyticsMetricTotals
+
+
+class PlatformBreakdownItem(AnalyticsMetricTotals):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    platform: Literal[
+        'x',
+        'instagram',
+        'tiktok',
+        'linkedin',
+        'facebook',
+        'youtube',
+        'threads',
+        'pinterest',
+        'bluesky',
+        'telegram',
+    ]
+    postCount: float
+
+
+class DailyMetricsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    dailyData: list[DailyDatum]
+    platformBreakdown: list[PlatformBreakdownItem]
+
+
+class Slot(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    day_of_week: Annotated[
+        int, Field(description='UTC day of week, where 0 is Sunday.', ge=0, le=6)
+    ]
+    hour: Annotated[int, Field(ge=0, le=23)]
+    avg_engagement: float
+    post_count: float
+
+
+class BestTimeResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    slots: list[Slot]
+
+
+class Account(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    field_id: Annotated[str, Field(alias='_id')]
+    platform: Literal[
+        'x',
+        'instagram',
+        'tiktok',
+        'linkedin',
+        'facebook',
+        'youtube',
+        'threads',
+        'pinterest',
+        'bluesky',
+        'telegram',
+    ]
+    username: str
+    currentFollowers: float
+    growth: float
+    growthPercentage: float
+    dataPoints: float
+
+
+class Stat(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    date: date_aliased
+    followers: float
+
+
+class DateRange(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    from_: Annotated[datetime, Field(alias='from')]
+    to: datetime
+
+
+class FollowerStatsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accounts: list[Account]
+    stats: dict[str, list[Stat]]
+    dateRange: DateRange
+    granularity: Literal['daily', 'weekly', 'monthly']
+
+
+class SyncExternalPostsRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: str
+    url: Annotated[
+        str | None, Field(description='Optional platform post URL to locate.')
+    ] = None
+    postId: Annotated[
+        str | None, Field(description='Optional platform post id to locate.')
+    ] = None
+
+
+class ExternalSyncedPost(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    platform: Literal[
+        'x',
+        'instagram',
+        'tiktok',
+        'linkedin',
+        'facebook',
+        'youtube',
+        'threads',
+        'pinterest',
+        'bluesky',
+        'telegram',
+    ]
+    platformPostId: str
+    platformPostUrl: str
+    content: str
+    publishedAt: datetime
+    mediaType: str
+    mediaUrl: str
+    thumbnailUrl: str
+    mediaItems: list[AnalyticsMediaItem]
+    analytics: AnalyticsMetrics
+
+
+class Synced(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    postsFound: float
+    postsSynced: float
+    skipped: bool
+
+
+class SyncExternalPostsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    synced: Synced
+    found: bool
+    post: ExternalSyncedPost | None
+    posts: list[ExternalSyncedPost]
 
 
 class ConnectCompleteErrorResponse(BaseModel):
@@ -152,7 +490,7 @@ class AccountProfileSummary(BaseModel):
     color: str
 
 
-class Account(BaseModel):
+class Account1(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
         populate_by_name=True,
@@ -168,6 +506,7 @@ class Account(BaseModel):
         'threads',
         'pinterest',
         'bluesky',
+        'telegram',
     ]
     providerAccountId: str
     profileId: AccountProfileSummary
@@ -197,7 +536,7 @@ class AccountsListResponse(BaseModel):
         extra='ignore',
         populate_by_name=True,
     )
-    accounts: list[Account]
+    accounts: list[Account1]
     pagination: Pagination | None = None
 
 
@@ -259,12 +598,13 @@ class ConnectCompleteResponse(BaseModel):
         'threads',
         'pinterest',
         'bluesky',
+        'telegram',
     ]
     profileId: str
     status: Literal['connected', 'needsReauth']
     missingScopes: list[str] | None = None
     connectedAccountCount: Annotated[int | None, Field(ge=0)] = None
-    accounts: list[Account] | None = None
+    accounts: list[Account1] | None = None
 
 
 class MediaPresignRequest(BaseModel):
@@ -498,6 +838,37 @@ class BlueskySettings(BaseModel):
     ] = None
 
 
+class TelegramSettings(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    parseMode: Annotated[
+        Literal['html', 'markdownv2'] | None,
+        Field(
+            description='Formatting mode for the message or caption. Omit to send plain text, which is the default. `html` is recommended: it only requires escaping `<`, `>`, and `&`, whereas `markdownv2` requires escaping every one of `_ * [ ] ( ) ~ ` > # + - = | { } . !` and rejects the whole message otherwise.'
+        ),
+    ] = None
+    disableNotification: Annotated[
+        bool | None,
+        Field(
+            description='When true, members receive the post silently, with no sound or vibration.'
+        ),
+    ] = None
+    disableLinkPreview: Annotated[
+        bool | None,
+        Field(
+            description='When true, suppresses the link preview card for URLs in the text. Applies to text-only posts; a post with media has no link preview.'
+        ),
+    ] = None
+    protectContent: Annotated[
+        bool | None,
+        Field(
+            description='When true, Telegram blocks forwarding and saving of the post.'
+        ),
+    ] = None
+
+
 class ApiPostAccount(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -515,6 +886,7 @@ class ApiPostAccount(BaseModel):
         'threads',
         'pinterest',
         'bluesky',
+        'telegram',
     ]
     username: str
     displayName: str
@@ -632,6 +1004,53 @@ class ApiKeyCreateResponse(BaseModel):
     apiKey: ApiKeyWithSecret
 
 
+class AnalyticsErrorResponse(ErrorResponse):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    platform: (
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ]
+        | None
+    ) = None
+    platformError: Annotated[
+        str | None,
+        Field(description='Original error detail returned by the social platform.'),
+    ] = None
+
+
+class AnalyticsListResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    posts: Annotated[
+        list[AnalyticsPost],
+        Field(
+            description="One entry per PostZen post, not per platform target. A post published to several platforms appears once, with one `platformAnalytics` entry per platform and `analytics` summed across them; `platform` is that post's only platform when it has one. Posts imported from a platform always appear on their own. `pagination.total` and `overview.totalPosts` count these grouped entries."
+        ),
+    ]
+    pagination: Pagination
+    overview: AnalyticsOverview
+    truncated: Annotated[
+        bool,
+        Field(
+            description='True when the requested window contained more posts than a single response can scan. `pagination.total` and `overview` then describe the most recent slice of the window rather than all of it; narrow `dateFrom`/`dateTo`, `accountId`, or `platform` to get exact totals.'
+        ),
+    ]
+
+
 class ApiPostPlatformResult(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -648,6 +1067,7 @@ class ApiPostPlatformResult(BaseModel):
         'threads',
         'pinterest',
         'bluesky',
+        'telegram',
     ]
     accountId: ApiPostAccount
     status: Literal[
@@ -673,6 +1093,7 @@ class CreatePostTarget(BaseModel):
         'threads',
         'pinterest',
         'bluesky',
+        'telegram',
     ]
     accountId: Annotated[
         str, Field(description='PostZen account id or provider account id.')
@@ -690,6 +1111,7 @@ class CreatePostTarget(BaseModel):
         | YouTubeSettings
         | PinterestSettings
         | BlueskySettings
+        | TelegramSettings
         | None,
         Field(
             description='Platform-specific publishing options. Unknown keys are ignored.'
