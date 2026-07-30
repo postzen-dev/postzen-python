@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from ...models import (
     CreatePostResponse,
+    LinkedInCommentsResponse,
+    LinkedInReactionsResponse,
     PostsListResponse,
 )
 
@@ -96,3 +98,43 @@ class PostsResource(BaseResource[Any]):
         )
         data = await self._client._apost('/v1/posts', data=payload, headers=headers)
         return CreatePostResponse.model_validate(data)
+
+    def list_post_comments(self, post_id: str, *, account_id: str | None = None, cursor: str | None = None, limit: int | None = 25) -> LinkedInCommentsResponse:
+        """List comments on a LinkedIn post."""
+        params = self._build_params(
+            account_id=account_id,
+            cursor=cursor,
+            limit=limit,
+        )
+        data = self._client._get(f"/v1/posts/{post_id}/comments", params=params)
+        return LinkedInCommentsResponse.model_validate(data)
+
+    async def alist_post_comments(self, post_id: str, *, account_id: str | None = None, cursor: str | None = None, limit: int | None = 25) -> LinkedInCommentsResponse:
+        """List comments on a LinkedIn post (async)."""
+        params = self._build_params(
+            account_id=account_id,
+            cursor=cursor,
+            limit=limit,
+        )
+        data = await self._client._aget(f"/v1/posts/{post_id}/comments", params=params)
+        return LinkedInCommentsResponse.model_validate(data)
+
+    def list_post_reactions(self, post_id: str, *, account_id: str | None = None, cursor: str | None = None, limit: int | None = 25) -> LinkedInReactionsResponse:
+        """List reactions on a LinkedIn post."""
+        params = self._build_params(
+            account_id=account_id,
+            cursor=cursor,
+            limit=limit,
+        )
+        data = self._client._get(f"/v1/posts/{post_id}/reactions", params=params)
+        return LinkedInReactionsResponse.model_validate(data)
+
+    async def alist_post_reactions(self, post_id: str, *, account_id: str | None = None, cursor: str | None = None, limit: int | None = 25) -> LinkedInReactionsResponse:
+        """List reactions on a LinkedIn post (async)."""
+        params = self._build_params(
+            account_id=account_id,
+            cursor=cursor,
+            limit=limit,
+        )
+        data = await self._client._aget(f"/v1/posts/{post_id}/reactions", params=params)
+        return LinkedInReactionsResponse.model_validate(data)

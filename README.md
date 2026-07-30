@@ -279,6 +279,8 @@ client.posts.create_post(
 ### Posts
 | Method | Description |
 |--------|-------------|
+| `posts.list_post_comments()` | List comments on a LinkedIn post |
+| `posts.list_post_reactions()` | List reactions on a LinkedIn post |
 | `posts.list_posts()` | List posts |
 | `posts.create_post()` | Create a post |
 

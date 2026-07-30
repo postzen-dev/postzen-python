@@ -35,7 +35,7 @@
 		},
 		{
 			"name": "Posts",
-			"description": "Create drafts, scheduled posts, or immediate posts."
+			"description": "Create drafts, scheduled posts, or immediate posts, and read LinkedIn comments and reactions on published organization posts."
 		},
 		{
 			"name": "Analytics",
@@ -959,6 +959,362 @@
 					},
 					"500": {
 						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/posts/{postId}/comments": {
+			"parameters": [
+				{
+					"name": "postId",
+					"in": "path",
+					"required": true,
+					"description": "PostZen post id. The LinkedIn post URN is not accepted here.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Posts"
+				],
+				"operationId": "listPostComments",
+				"summary": "List comments on a LinkedIn post",
+				"description": "Returns the comments LinkedIn holds for a post published through PostZen. LinkedIn only, and organization (company page) posts only. The post's LinkedIn connection must hold `r_organization_social_feed`, which LinkedIn ships with its Community Management API product — reconnect the account if it was connected before company-page posting was enabled. A personal (member) post always returns `403 personalPostUnsupported`: reading a member's own comments and reactions needs `r_member_social_feed`, which LinkedIn grants to select developers only. Read-only and read-write API keys are accepted.",
+				"parameters": [
+					{
+						"name": "accountId",
+						"in": "query",
+						"description": "Restrict the lookup to one LinkedIn target when the post was published to several LinkedIn accounts. PostZen account id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"description": "Opaque pagination cursor. Pass the `nextCursor` from the previous response to fetch the next page.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 25
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Comments returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInCommentsResponse"
+								},
+								"example": {
+									"comments": [
+										{
+											"id": "7123456789012345679",
+											"commentUrn": "urn:li:comment:(urn:li:share:7123456789012345678,7123456789012345679)",
+											"text": "Congratulations on the launch!",
+											"authorUrn": "urn:li:person:AbC1dEfGhI",
+											"authorName": "Jane Doe",
+											"createdAt": "2026-07-29T16:04:11.000Z",
+											"likeCount": 4,
+											"replyCount": 1
+										}
+									],
+									"nextCursor": "25"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The post was authored by a member rather than a company page (`personalPostUnsupported`), the API key cannot access the post's profile (`forbidden`), organization engagement reads are disabled on the deployment (`orgScopesDisabled`), or the connection is missing `r_organization_social_feed` (`platformCapabilityMissing`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "LinkedIn only exposes comments and reactions for organization-authored posts. Publish with a LinkedIn company page to read engagement back.",
+									"code": "personalPostUnsupported",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No post exists with the given id, it is not visible to this API key, or it has no LinkedIn target.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "Not found",
+									"code": "notFound",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The post's LinkedIn target has not published yet, so it has no URN to read engagement for.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "This post has not been published to LinkedIn yet",
+									"code": "postNotPublished",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The LinkedIn account behind the post is no longer connected.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "The LinkedIn account for this post is no longer connected",
+									"code": "notConnected",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "LinkedIn rate limited the upstream request. PostZen's own per-account rate limiter also returns `429`, with `{\"error\":\"rate_limited\"}` and a `Retry-After` header.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "LinkedIn rate limited this request. Retry later.",
+									"code": "rateLimited",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"502": {
+						"description": "LinkedIn could not answer the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "LinkedIn could not answer this request",
+									"code": "requestFailed",
+									"platform": "linkedin"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/posts/{postId}/reactions": {
+			"parameters": [
+				{
+					"name": "postId",
+					"in": "path",
+					"required": true,
+					"description": "PostZen post id. The LinkedIn post URN is not accepted here.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Posts"
+				],
+				"operationId": "listPostReactions",
+				"summary": "List reactions on a LinkedIn post",
+				"description": "Returns the individual reactions LinkedIn holds for a post published through PostZen, plus a per-type count of the returned page. LinkedIn only, and organization (company page) posts only. The post's LinkedIn connection must hold `r_organization_social_feed`, which LinkedIn ships with its Community Management API product — reconnect the account if it was connected before company-page posting was enabled. A personal (member) post always returns `403 personalPostUnsupported`: reading a member's own comments and reactions needs `r_member_social_feed`, which LinkedIn grants to select developers only. Read-only and read-write API keys are accepted.",
+				"parameters": [
+					{
+						"name": "accountId",
+						"in": "query",
+						"description": "Restrict the lookup to one LinkedIn target when the post was published to several LinkedIn accounts. PostZen account id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"description": "Opaque pagination cursor. Pass the `nextCursor` from the previous response to fetch the next page.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 25
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Reactions returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInReactionsResponse"
+								},
+								"example": {
+									"reactions": [
+										{
+											"reactionType": "LIKE",
+											"actorUrn": "urn:li:person:AbC1dEfGhI",
+											"createdAt": "2026-07-29T16:02:47.000Z"
+										},
+										{
+											"reactionType": "PRAISE",
+											"actorUrn": "urn:li:person:JkL2mNoPqR",
+											"createdAt": "2026-07-29T16:03:02.000Z"
+										}
+									],
+									"totalsByType": {
+										"LIKE": 1,
+										"PRAISE": 1
+									},
+									"nextCursor": "25"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The post was authored by a member rather than a company page (`personalPostUnsupported`), the API key cannot access the post's profile (`forbidden`), organization engagement reads are disabled on the deployment (`orgScopesDisabled`), or the connection is missing `r_organization_social_feed` (`platformCapabilityMissing`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "LinkedIn only exposes comments and reactions for organization-authored posts. Publish with a LinkedIn company page to read engagement back.",
+									"code": "personalPostUnsupported",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No post exists with the given id, it is not visible to this API key, or it has no LinkedIn target.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "Not found",
+									"code": "notFound",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "The post's LinkedIn target has not published yet, so it has no URN to read engagement for.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "This post has not been published to LinkedIn yet",
+									"code": "postNotPublished",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The LinkedIn account behind the post is no longer connected.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "The LinkedIn account for this post is no longer connected",
+									"code": "notConnected",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "LinkedIn rate limited the upstream request. PostZen's own per-account rate limiter also returns `429`, with `{\"error\":\"rate_limited\"}` and a `Retry-After` header.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "LinkedIn rate limited this request. Retry later.",
+									"code": "rateLimited",
+									"platform": "linkedin"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"502": {
+						"description": "LinkedIn could not answer the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/LinkedInSocialReadErrorResponse"
+								},
+								"example": {
+									"error": "LinkedIn could not answer this request",
+									"code": "requestFailed",
+									"platform": "linkedin"
+								}
+							}
+						}
 					}
 				}
 			}
@@ -3083,6 +3439,153 @@
 					}
 				}
 			},
+			"LinkedInComment": {
+				"type": "object",
+				"description": "A comment LinkedIn holds on an organization post published through PostZen.",
+				"required": [
+					"id",
+					"text",
+					"authorUrn",
+					"createdAt"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "LinkedIn's numeric comment id, unique within its thread."
+					},
+					"commentUrn": {
+						"type": "string",
+						"description": "Composite comment URN — `urn:li:comment:(<threadUrn>,<id>)` — which every comment-scoped LinkedIn endpoint takes as its path parameter. Absent when LinkedIn omits it."
+					},
+					"text": {
+						"type": "string",
+						"description": "Comment body as plain text."
+					},
+					"authorUrn": {
+						"type": "string",
+						"description": "URN of the member or organization that wrote the comment."
+					},
+					"authorName": {
+						"type": "string",
+						"description": "Display name of the author, when LinkedIn returns one."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the comment was created."
+					},
+					"likeCount": {
+						"type": "integer",
+						"description": "Likes on the comment, when LinkedIn returns a count."
+					},
+					"replyCount": {
+						"type": "integer",
+						"description": "Replies to the comment, when LinkedIn returns a count."
+					}
+				}
+			},
+			"LinkedInCommentsResponse": {
+				"type": "object",
+				"required": [
+					"comments"
+				],
+				"properties": {
+					"comments": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/LinkedInComment"
+						}
+					},
+					"nextCursor": {
+						"type": "string",
+						"description": "Present when more comments are available. Pass it back as `cursor` to fetch the next page."
+					}
+				}
+			},
+			"LinkedInReaction": {
+				"type": "object",
+				"description": "A single reaction LinkedIn holds on an organization post published through PostZen.",
+				"required": [
+					"reactionType",
+					"actorUrn"
+				],
+				"properties": {
+					"reactionType": {
+						"type": "string",
+						"description": "LinkedIn reaction type, such as `LIKE`, `PRAISE`, `EMPATHY`, `INTEREST`, `APPRECIATION`, or `ENTERTAINMENT`. Treat this as an open set — LinkedIn adds reaction types over time."
+					},
+					"actorUrn": {
+						"type": "string",
+						"description": "URN of the member or organization that reacted."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the reaction was recorded, when LinkedIn returns a timestamp."
+					}
+				}
+			},
+			"LinkedInReactionsResponse": {
+				"type": "object",
+				"required": [
+					"reactions",
+					"totalsByType"
+				],
+				"properties": {
+					"reactions": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/LinkedInReaction"
+						}
+					},
+					"totalsByType": {
+						"type": "object",
+						"description": "Reaction count keyed by reaction type, tallied from the reactions in this response. Sum the pages yourself for a whole-post total.",
+						"additionalProperties": {
+							"type": "integer"
+						}
+					},
+					"nextCursor": {
+						"type": "string",
+						"description": "Present when more reactions are available. Pass it back as `cursor` to fetch the next page."
+					}
+				}
+			},
+			"LinkedInSocialReadErrorResponse": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/ErrorResponse"
+					},
+					{
+						"type": "object",
+						"required": [
+							"code",
+							"platform"
+						],
+						"properties": {
+							"code": {
+								"type": "string",
+								"enum": [
+									"notFound",
+									"forbidden",
+									"postNotPublished",
+									"personalPostUnsupported",
+									"orgScopesDisabled",
+									"platformCapabilityMissing",
+									"notConnected",
+									"rateLimited",
+									"requestFailed"
+								],
+								"description": "Machine-readable failure reason."
+							},
+							"platform": {
+								"type": "string",
+								"const": "linkedin"
+							}
+						}
+					}
+				]
+			},
 			"RateLimitError": {
 				"type": "object",
 				"required": [
@@ -3511,18 +4014,53 @@
 			},
 			"LinkedInSettings": {
 				"type": "object",
+				"description": "LinkedIn target settings. A LinkedIn post carries exactly one media kind: no media (text only), 1–20 images, one MP4 video, or one document (PDF/DOC/DOCX/PPT/PPTX). Commentary is limited to 3,000 characters. Every key below is also accepted in `snake_case` (for example `first_comment` and `organization_urn`).",
 				"properties": {
 					"visibility": {
 						"type": "string",
 						"enum": [
 							"PUBLIC",
 							"CONNECTIONS"
-						]
+						],
+						"default": "PUBLIC",
+						"description": "Who can see the post. `CONNECTIONS` is only valid for a member (personal profile) post — combining it with `organizationUrn` is a validation error, because a company page has no connections."
 					},
 					"videoTitle": {
 						"type": "string",
 						"maxLength": 200,
 						"description": "Optional title for video posts, shown on the LinkedIn video player. Ignored for non-video posts."
+					},
+					"documentTitle": {
+						"type": "string",
+						"maxLength": 200,
+						"description": "Title for a document (PDF carousel) post. LinkedIn requires a title on document posts; when this is omitted PostZen falls back to the uploaded file's name. Ignored for non-document posts."
+					},
+					"organizationUrn": {
+						"type": "string",
+						"pattern": "^(urn:li:organization:[0-9]+|[0-9]+)$",
+						"description": "Publish as a LinkedIn company page instead of the connected member. Accepts either the full URN (`urn:li:organization:12345`) or the bare numeric page id (`12345`), which PostZen expands to the URN. The connection must have been authorized with the organization scopes — reconnect the account if it was connected before company-page posting was enabled. Also accepted as `organizationId` / `organization_id`."
+					},
+					"firstComment": {
+						"type": "string",
+						"maxLength": 1250,
+						"description": "Comment posted by the same author immediately after the post goes live. LinkedIn's comment composer caps this at 1,250 characters, tighter than the 3,000-character post body. Best-effort: a failure here is logged and never fails the post, and the post is never retried because of it."
+					},
+					"disableLinkPreview": {
+						"type": "boolean",
+						"description": "LinkedIn's Posts API never scrapes URLs, so a bare link renders as plain text. When this is `false` or omitted and the text contains a URL, PostZen attaches a link card for the first URL; because no scraped metadata is available, the card is titled with the URL's hostname (for example `example.com`). Set to `true` to keep the post as plain text with no card. Also accepted as `disableLinkCard`."
+					},
+					"reshareUrl": {
+						"type": "string",
+						"description": "LinkedIn post to quote-reshare. Accepts a public post permalink or a `urn:li:activity:` / `urn:li:share:` / `urn:li:ugcPost:` URN. Mutually exclusive with uploaded media."
+					},
+					"geoRestrictionCountries": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"pattern": "^[A-Z]{2}$"
+						},
+						"maxItems": 25,
+						"description": "Restrict who sees the post to these countries, as uppercase ISO 3166-1 alpha-2 codes (for example `[\"US\", \"CA\"]`). Up to 25 countries, and organization posts only — supplying this without `organizationUrn` is a validation error."
 					}
 				}
 			},

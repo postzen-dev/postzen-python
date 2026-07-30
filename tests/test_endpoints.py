@@ -30,6 +30,8 @@ def test_all_spec_endpoints_are_available(client):
         "posts": [
             "list_posts",
             "create_post",
+            "list_post_comments",
+            "list_post_reactions",
         ],
     }
     for resource_name, methods in expected.items():

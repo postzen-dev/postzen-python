@@ -540,6 +540,119 @@ class AccountsListResponse(BaseModel):
     pagination: Pagination | None = None
 
 
+class LinkedInComment(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(description="LinkedIn's numeric comment id, unique within its thread."),
+    ]
+    commentUrn: Annotated[
+        str | None,
+        Field(
+            description='Composite comment URN — `urn:li:comment:(<threadUrn>,<id>)` — which every comment-scoped LinkedIn endpoint takes as its path parameter. Absent when LinkedIn omits it.'
+        ),
+    ] = None
+    text: Annotated[str, Field(description='Comment body as plain text.')]
+    authorUrn: Annotated[
+        str,
+        Field(description='URN of the member or organization that wrote the comment.'),
+    ]
+    authorName: Annotated[
+        str | None,
+        Field(description='Display name of the author, when LinkedIn returns one.'),
+    ] = None
+    createdAt: Annotated[datetime, Field(description='When the comment was created.')]
+    likeCount: Annotated[
+        int | None,
+        Field(description='Likes on the comment, when LinkedIn returns a count.'),
+    ] = None
+    replyCount: Annotated[
+        int | None,
+        Field(description='Replies to the comment, when LinkedIn returns a count.'),
+    ] = None
+
+
+class LinkedInCommentsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    comments: list[LinkedInComment]
+    nextCursor: Annotated[
+        str | None,
+        Field(
+            description='Present when more comments are available. Pass it back as `cursor` to fetch the next page.'
+        ),
+    ] = None
+
+
+class LinkedInReaction(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    reactionType: Annotated[
+        str,
+        Field(
+            description='LinkedIn reaction type, such as `LIKE`, `PRAISE`, `EMPATHY`, `INTEREST`, `APPRECIATION`, or `ENTERTAINMENT`. Treat this as an open set — LinkedIn adds reaction types over time.'
+        ),
+    ]
+    actorUrn: Annotated[
+        str, Field(description='URN of the member or organization that reacted.')
+    ]
+    createdAt: Annotated[
+        datetime | None,
+        Field(
+            description='When the reaction was recorded, when LinkedIn returns a timestamp.'
+        ),
+    ] = None
+
+
+class LinkedInReactionsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    reactions: list[LinkedInReaction]
+    totalsByType: Annotated[
+        dict[str, int],
+        Field(
+            description='Reaction count keyed by reaction type, tallied from the reactions in this response. Sum the pages yourself for a whole-post total.'
+        ),
+    ]
+    nextCursor: Annotated[
+        str | None,
+        Field(
+            description='Present when more reactions are available. Pass it back as `cursor` to fetch the next page.'
+        ),
+    ] = None
+
+
+class LinkedInSocialReadErrorResponse(ErrorResponse):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    code: Annotated[
+        Literal[
+            'notFound',
+            'forbidden',
+            'postNotPublished',
+            'personalPostUnsupported',
+            'orgScopesDisabled',
+            'platformCapabilityMissing',
+            'notConnected',
+            'rateLimited',
+            'requestFailed',
+        ],
+        Field(description='Machine-readable failure reason.'),
+    ]
+    platform: Literal['linkedin']
+
+
 class RateLimitError(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -759,17 +872,66 @@ class TikTokSettings(BaseModel):
     brandOrganicToggle: bool | None = None
 
 
+class GeoRestrictionCountry(RootModel[str]):
+    root: Annotated[str, Field(pattern='^[A-Z]{2}$')]
+
+
 class LinkedInSettings(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
         populate_by_name=True,
     )
-    visibility: Literal['PUBLIC', 'CONNECTIONS'] | None = None
+    visibility: Annotated[
+        Literal['PUBLIC', 'CONNECTIONS'] | None,
+        Field(
+            description='Who can see the post. `CONNECTIONS` is only valid for a member (personal profile) post — combining it with `organizationUrn` is a validation error, because a company page has no connections.'
+        ),
+    ] = 'PUBLIC'
     videoTitle: Annotated[
         str | None,
         Field(
             description='Optional title for video posts, shown on the LinkedIn video player. Ignored for non-video posts.',
             max_length=200,
+        ),
+    ] = None
+    documentTitle: Annotated[
+        str | None,
+        Field(
+            description="Title for a document (PDF carousel) post. LinkedIn requires a title on document posts; when this is omitted PostZen falls back to the uploaded file's name. Ignored for non-document posts.",
+            max_length=200,
+        ),
+    ] = None
+    organizationUrn: Annotated[
+        str | None,
+        Field(
+            description='Publish as a LinkedIn company page instead of the connected member. Accepts either the full URN (`urn:li:organization:12345`) or the bare numeric page id (`12345`), which PostZen expands to the URN. The connection must have been authorized with the organization scopes — reconnect the account if it was connected before company-page posting was enabled. Also accepted as `organizationId` / `organization_id`.',
+            pattern='^(urn:li:organization:[0-9]+|[0-9]+)$',
+        ),
+    ] = None
+    firstComment: Annotated[
+        str | None,
+        Field(
+            description="Comment posted by the same author immediately after the post goes live. LinkedIn's comment composer caps this at 1,250 characters, tighter than the 3,000-character post body. Best-effort: a failure here is logged and never fails the post, and the post is never retried because of it.",
+            max_length=1250,
+        ),
+    ] = None
+    disableLinkPreview: Annotated[
+        bool | None,
+        Field(
+            description="LinkedIn's Posts API never scrapes URLs, so a bare link renders as plain text. When this is `false` or omitted and the text contains a URL, PostZen attaches a link card for the first URL; because no scraped metadata is available, the card is titled with the URL's hostname (for example `example.com`). Set to `true` to keep the post as plain text with no card. Also accepted as `disableLinkCard`."
+        ),
+    ] = None
+    reshareUrl: Annotated[
+        str | None,
+        Field(
+            description='LinkedIn post to quote-reshare. Accepts a public post permalink or a `urn:li:activity:` / `urn:li:share:` / `urn:li:ugcPost:` URN. Mutually exclusive with uploaded media.'
+        ),
+    ] = None
+    geoRestrictionCountries: Annotated[
+        list[GeoRestrictionCountry] | None,
+        Field(
+            description='Restrict who sees the post to these countries, as uppercase ISO 3166-1 alpha-2 codes (for example `["US", "CA"]`). Up to 25 countries, and organization posts only — supplying this without `organizationUrn` is a validation error.',
+            max_length=25,
         ),
     ] = None
 
