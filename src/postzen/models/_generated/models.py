@@ -18,6 +18,75 @@ class ErrorResponse(BaseModel):
     error: str
 
 
+class PinterestBoard(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str
+    name: str
+    description: str | None = None
+    privacy: Literal['PUBLIC', 'PROTECTED', 'SECRET'] | None = None
+    pinCount: Annotated[int | None, Field(ge=0)] = None
+
+
+class PinterestBoardsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    boards: list[PinterestBoard]
+
+
+class Board(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str
+    name: str
+    description: str | None = None
+    privacy: Literal['PUBLIC', 'PROTECTED', 'SECRET'] | None = None
+
+
+class PinterestBoardResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    board: Board
+
+
+class PinterestCreateBoardRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    name: Annotated[str, Field(min_length=1)]
+    description: str | None = None
+    privacy: Literal['PUBLIC', 'PROTECTED', 'SECRET'] | None = 'PUBLIC'
+
+
+class PinterestDefaultBoardRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    defaultBoardId: Annotated[str, Field(min_length=1)]
+    defaultBoardName: str | None = None
+
+
+class PinterestSelectBoardRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    state: Annotated[str, Field(min_length=1)]
+    boardId: Annotated[str, Field(min_length=1)]
+    boardName: str | None = None
+    redirectUrl: str | None = None
+
+
 class AnalyticsDate(RootModel[date_aliased | datetime]):
     root: Annotated[
         date_aliased | datetime,
@@ -238,7 +307,7 @@ class BestTimeResponse(BaseModel):
     slots: list[Slot]
 
 
-class Account(BaseModel):
+class Account1(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
         populate_by_name=True,
@@ -286,7 +355,7 @@ class FollowerStatsResponse(BaseModel):
         extra='ignore',
         populate_by_name=True,
     )
-    accounts: list[Account]
+    accounts: list[Account1]
     stats: dict[str, list[Stat]]
     dateRange: DateRange
     granularity: Literal['daily', 'weekly', 'monthly']
@@ -490,7 +559,7 @@ class AccountProfileSummary(BaseModel):
     color: str
 
 
-class Account1(BaseModel):
+class Account(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
         populate_by_name=True,
@@ -518,6 +587,18 @@ class Account1(BaseModel):
     isActive: bool
     connectedAt: datetime
     lastSyncedAt: datetime | None = None
+    defaultBoardId: Annotated[
+        str | None,
+        Field(
+            description='Default Pinterest board id. Present only when one has been selected for a Pinterest account.'
+        ),
+    ] = None
+    defaultBoardName: Annotated[
+        str | None,
+        Field(
+            description='Default Pinterest board name. Present when Pinterest returned a name for the selected default board.'
+        ),
+    ] = None
 
 
 class Pagination(BaseModel):
@@ -536,7 +617,7 @@ class AccountsListResponse(BaseModel):
         extra='ignore',
         populate_by_name=True,
     )
-    accounts: list[Account1]
+    accounts: list[Account]
     pagination: Pagination | None = None
 
 
@@ -717,7 +798,7 @@ class ConnectCompleteResponse(BaseModel):
     status: Literal['connected', 'needsReauth']
     missingScopes: list[str] | None = None
     connectedAccountCount: Annotated[int | None, Field(ge=0)] = None
-    accounts: list[Account1] | None = None
+    accounts: list[Account] | None = None
 
 
 class MediaPresignRequest(BaseModel):
@@ -1164,6 +1245,25 @@ class ApiKeyCreateResponse(BaseModel):
     )
     message: str
     apiKey: ApiKeyWithSecret
+
+
+class PinterestDefaultBoardResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: Literal['Default Pinterest board updated successfully']
+    account: Account
+
+
+class PinterestSelectBoardResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: Literal['Pinterest connected successfully with default board']
+    account: Account
+    redirectUrl: str | None = None
 
 
 class AnalyticsErrorResponse(ErrorResponse):

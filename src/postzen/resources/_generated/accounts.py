@@ -12,6 +12,9 @@ from typing import TYPE_CHECKING, Any
 from ...models import (
     AccountsListResponse,
     MessageResponse,
+    PinterestBoardResponse,
+    PinterestBoardsResponse,
+    PinterestDefaultBoardResponse,
 )
 
 from ..base import BaseResource
@@ -59,3 +62,51 @@ class AccountsResource(BaseResource[Any]):
         """Disconnect an account (async)."""
         data = await self._client._adelete(f"/v1/accounts/{account_id}")
         return MessageResponse.model_validate(data)
+
+    def get_pinterest_boards(self, account_id: str) -> PinterestBoardsResponse:
+        """List Pinterest boards."""
+        data = self._client._get(f"/v1/accounts/{account_id}/pinterest-boards")
+        return PinterestBoardsResponse.model_validate(data)
+
+    async def aget_pinterest_boards(self, account_id: str) -> PinterestBoardsResponse:
+        """List Pinterest boards (async)."""
+        data = await self._client._aget(f"/v1/accounts/{account_id}/pinterest-boards")
+        return PinterestBoardsResponse.model_validate(data)
+
+    def create_pinterest_board(self, account_id: str, *, name: str, description: str | None = None, privacy: str | None = 'PUBLIC') -> PinterestBoardResponse:
+        """Create Pinterest board."""
+        payload = self._build_payload(
+            name=name,
+            description=description,
+            privacy=privacy,
+        )
+        data = self._client._post(f"/v1/accounts/{account_id}/pinterest-boards", data=payload)
+        return PinterestBoardResponse.model_validate(data)
+
+    async def acreate_pinterest_board(self, account_id: str, *, name: str, description: str | None = None, privacy: str | None = 'PUBLIC') -> PinterestBoardResponse:
+        """Create Pinterest board (async)."""
+        payload = self._build_payload(
+            name=name,
+            description=description,
+            privacy=privacy,
+        )
+        data = await self._client._apost(f"/v1/accounts/{account_id}/pinterest-boards", data=payload)
+        return PinterestBoardResponse.model_validate(data)
+
+    def update_pinterest_boards(self, account_id: str, *, default_board_id: str, default_board_name: str | None = None) -> PinterestDefaultBoardResponse:
+        """Set default Pinterest board."""
+        payload = self._build_payload(
+            default_board_id=default_board_id,
+            default_board_name=default_board_name,
+        )
+        data = self._client._put(f"/v1/accounts/{account_id}/pinterest-boards", data=payload)
+        return PinterestDefaultBoardResponse.model_validate(data)
+
+    async def aupdate_pinterest_boards(self, account_id: str, *, default_board_id: str, default_board_name: str | None = None) -> PinterestDefaultBoardResponse:
+        """Set default Pinterest board (async)."""
+        payload = self._build_payload(
+            default_board_id=default_board_id,
+            default_board_name=default_board_name,
+        )
+        data = await self._client._aput(f"/v1/accounts/{account_id}/pinterest-boards", data=payload)
+        return PinterestDefaultBoardResponse.model_validate(data)

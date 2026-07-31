@@ -19,8 +19,13 @@ def test_all_spec_endpoints_are_available(client):
         "accounts": [
             "list_accounts",
             "disconnect_account",
+            "get_pinterest_boards",
+            "create_pinterest_board",
+            "update_pinterest_boards",
         ],
         "connect": [
+            "list_pinterest_boards_for_selection",
+            "select_pinterest_board",
             "create_connect_url",
             "complete_connect",
         ],

@@ -263,13 +263,18 @@ client.posts.create_post(
 | Method | Description |
 |--------|-------------|
 | `accounts.list_accounts()` | List accounts |
+| `accounts.create_pinterest_board()` | Create Pinterest board |
+| `accounts.get_pinterest_boards()` | List Pinterest boards |
+| `accounts.update_pinterest_boards()` | Set default Pinterest board |
 | `accounts.disconnect_account()` | Disconnect an account |
 
 ### Connect (OAuth)
 | Method | Description |
 |--------|-------------|
+| `connect.list_pinterest_boards_for_selection()` | List Pinterest boards for the connect flow |
 | `connect.create_connect_url()` | Create an OAuth connect URL |
 | `connect.complete_connect()` | Complete an OAuth connection |
+| `connect.select_pinterest_board()` | Select Pinterest board |
 
 ### Media
 | Method | Description |

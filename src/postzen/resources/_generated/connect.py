@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 from ...models import (
     ConnectCompleteResponse,
     ConnectStartResponse,
+    PinterestBoardsResponse,
+    PinterestSelectBoardResponse,
 )
 
 from ..base import BaseResource
@@ -25,6 +27,44 @@ class ConnectResource(BaseResource[Any]):
 
     def __init__(self, client: BaseClient) -> None:
         super().__init__(client)
+
+    def list_pinterest_boards_for_selection(self, *, state: str) -> PinterestBoardsResponse:
+        """List Pinterest boards for the connect flow."""
+        params = self._build_params(
+            state=state,
+        )
+        data = self._client._get('/v1/connect/pinterest/select-board', params=params)
+        return PinterestBoardsResponse.model_validate(data)
+
+    async def alist_pinterest_boards_for_selection(self, *, state: str) -> PinterestBoardsResponse:
+        """List Pinterest boards for the connect flow (async)."""
+        params = self._build_params(
+            state=state,
+        )
+        data = await self._client._aget('/v1/connect/pinterest/select-board', params=params)
+        return PinterestBoardsResponse.model_validate(data)
+
+    def select_pinterest_board(self, *, state: str, board_id: str, board_name: str | None = None, redirect_url: str | None = None) -> PinterestSelectBoardResponse:
+        """Select Pinterest board."""
+        payload = self._build_payload(
+            state=state,
+            board_id=board_id,
+            board_name=board_name,
+            redirect_url=redirect_url,
+        )
+        data = self._client._post('/v1/connect/pinterest/select-board', data=payload)
+        return PinterestSelectBoardResponse.model_validate(data)
+
+    async def aselect_pinterest_board(self, *, state: str, board_id: str, board_name: str | None = None, redirect_url: str | None = None) -> PinterestSelectBoardResponse:
+        """Select Pinterest board (async)."""
+        payload = self._build_payload(
+            state=state,
+            board_id=board_id,
+            board_name=board_name,
+            redirect_url=redirect_url,
+        )
+        data = await self._client._apost('/v1/connect/pinterest/select-board', data=payload)
+        return PinterestSelectBoardResponse.model_validate(data)
 
     def create_connect_url(self, platform: str, *, profile_id: str, redirect_url: str | None = None) -> ConnectStartResponse:
         """Create an OAuth connect URL."""

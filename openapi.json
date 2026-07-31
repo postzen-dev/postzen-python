@@ -447,6 +447,557 @@
 				}
 			}
 		},
+		"/v1/accounts/{accountId}/pinterest-boards": {
+			"parameters": [
+				{
+					"name": "accountId",
+					"in": "path",
+					"required": true,
+					"description": "PostZen id of a connected Pinterest account.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Accounts"
+				],
+				"operationId": "getPinterestBoards",
+				"summary": "List Pinterest boards",
+				"description": "Lists boards owned by a connected Pinterest account. Read-only and read-write API keys are accepted.",
+				"responses": {
+					"200": {
+						"description": "Pinterest boards returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PinterestBoardsResponse"
+								},
+								"example": {
+									"boards": [
+										{
+											"id": "123456789012345678",
+											"name": "Product inspiration",
+											"description": "Ideas for upcoming launches",
+											"privacy": "PUBLIC",
+											"pinCount": 42
+										}
+									]
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"424": {
+						"description": "The Pinterest account is no longer connected.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "not_connected"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"502": {
+						"description": "Pinterest could not answer the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "request_failed"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Accounts"
+				],
+				"operationId": "createPinterestBoard",
+				"summary": "Create Pinterest board",
+				"description": "Creates a board for the connected Pinterest account. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/PinterestCreateBoardRequest"
+							},
+							"example": {
+								"name": "Product inspiration",
+								"description": "Ideas for upcoming launches",
+								"privacy": "PUBLIC"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Pinterest board created.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PinterestBoardResponse"
+								},
+								"example": {
+									"board": {
+										"id": "123456789012345678",
+										"name": "Product inspiration",
+										"description": "Ideas for upcoming launches",
+										"privacy": "PUBLIC"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"424": {
+						"description": "The Pinterest account is no longer connected.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "not_connected"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"502": {
+						"description": "Pinterest could not create the board.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "request_failed"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"put": {
+				"tags": [
+					"Accounts"
+				],
+				"operationId": "updatePinterestBoards",
+				"summary": "Set default Pinterest board",
+				"description": "Verifies a Pinterest board and stores it as the account default used when a pin target omits `settings.boardId`. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/PinterestDefaultBoardRequest"
+							},
+							"example": {
+								"defaultBoardId": "123456789012345678",
+								"defaultBoardName": "Product inspiration"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Default Pinterest board updated.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PinterestDefaultBoardResponse"
+								},
+								"example": {
+									"message": "Default Pinterest board updated successfully",
+									"account": {
+										"_id": "j97kp4mw2xnv6r1t8c3zq5bs9fh0yg4d",
+										"platform": "pinterest",
+										"providerAccountId": "987654321098765432",
+										"profileId": {
+											"_id": "jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e",
+											"name": "Marketing Team",
+											"slug": "marketing-team",
+											"color": "#4caf50"
+										},
+										"username": "acme",
+										"displayName": "Acme",
+										"status": "connected",
+										"isActive": true,
+										"connectedAt": "2026-06-19T16:00:00.000Z",
+										"defaultBoardId": "123456789012345678",
+										"defaultBoardName": "Product inspiration"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request or the selected board does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "board_not_found"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"424": {
+						"description": "The Pinterest account is no longer connected.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "not_connected"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"502": {
+						"description": "Pinterest could not verify the board.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "request_failed"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/connect/pinterest/select-board": {
+			"get": {
+				"tags": [
+					"Connect"
+				],
+				"operationId": "listPinterestBoardsForSelection",
+				"summary": "List Pinterest boards for the connect flow",
+				"description": "Lists boards after Pinterest OAuth completes so the client can show a board picker. The state handle remains valid for board selection for 30 minutes from connect-flow creation. This endpoint requires a read-write API key.",
+				"parameters": [
+					{
+						"name": "state",
+						"in": "query",
+						"required": true,
+						"description": "State token returned by `GET /v1/connect/pinterest`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Pinterest boards returned for selection.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PinterestBoardsResponse"
+								},
+								"example": {
+									"boards": [
+										{
+											"id": "123456789012345678",
+											"name": "Product inspiration",
+											"privacy": "PUBLIC"
+										}
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"description": "The connect session was not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "connect_session_not_found"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Pinterest OAuth has not completed for this connect session.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "connect_not_completed"
+								}
+							}
+						}
+					},
+					"410": {
+						"description": "The connect session is too old for board selection.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "connect_session_expired"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The connected Pinterest account is no longer available.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "not_connected"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"502": {
+						"description": "Pinterest could not answer the request.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "request_failed"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Connect"
+				],
+				"operationId": "selectPinterestBoard",
+				"summary": "Select Pinterest board",
+				"description": "Verifies and stores the default board for the Pinterest account created by the connect session. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/PinterestSelectBoardRequest"
+							},
+							"example": {
+								"state": "3q2Xv8Zk1mR5tY7wA9bC4dE6",
+								"boardId": "123456789012345678",
+								"boardName": "Product inspiration",
+								"redirectUrl": "https://example.com/connect/complete"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Pinterest board selected and stored as the account default.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/PinterestSelectBoardResponse"
+								},
+								"example": {
+									"message": "Pinterest connected successfully with default board",
+									"account": {
+										"_id": "j97kp4mw2xnv6r1t8c3zq5bs9fh0yg4d",
+										"platform": "pinterest",
+										"providerAccountId": "987654321098765432",
+										"profileId": {
+											"_id": "jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e",
+											"name": "Marketing Team",
+											"slug": "marketing-team",
+											"color": "#4caf50"
+										},
+										"username": "acme",
+										"displayName": "Acme",
+										"status": "connected",
+										"isActive": true,
+										"connectedAt": "2026-06-19T16:00:00.000Z",
+										"defaultBoardId": "123456789012345678",
+										"defaultBoardName": "Product inspiration"
+									},
+									"redirectUrl": "https://example.com/connect/complete?connected=pinterest&profileId=jh72r5nqk9wx3v8m1t4cz6bs0fy5dg3e&board=Product+inspiration"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "Invalid request or the selected board does not exist.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "board_not_found"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"description": "The connect session was not found.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "connect_session_not_found"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "Pinterest OAuth has not completed for this connect session.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "connect_not_completed"
+								}
+							}
+						}
+					},
+					"410": {
+						"description": "The connect session is too old for board selection.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "connect_session_expired"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The connected Pinterest account is no longer available.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "not_connected"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"502": {
+						"description": "Pinterest could not verify the board.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								},
+								"example": {
+									"error": "request_failed"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
 		"/v1/connect/{platform}": {
 			"parameters": [
 				{
@@ -2313,6 +2864,186 @@
 					}
 				}
 			},
+			"PinterestBoard": {
+				"type": "object",
+				"required": [
+					"id",
+					"name"
+				],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string"
+					},
+					"description": {
+						"type": "string"
+					},
+					"privacy": {
+						"type": "string",
+						"enum": [
+							"PUBLIC",
+							"PROTECTED",
+							"SECRET"
+						]
+					},
+					"pinCount": {
+						"type": "integer",
+						"minimum": 0
+					}
+				}
+			},
+			"PinterestBoardsResponse": {
+				"type": "object",
+				"required": [
+					"boards"
+				],
+				"properties": {
+					"boards": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/PinterestBoard"
+						}
+					}
+				}
+			},
+			"PinterestBoardResponse": {
+				"type": "object",
+				"required": [
+					"board"
+				],
+				"properties": {
+					"board": {
+						"type": "object",
+						"required": [
+							"id",
+							"name"
+						],
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							},
+							"description": {
+								"type": "string"
+							},
+							"privacy": {
+								"type": "string",
+								"enum": [
+									"PUBLIC",
+									"PROTECTED",
+									"SECRET"
+								]
+							}
+						}
+					}
+				}
+			},
+			"PinterestCreateBoardRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"name"
+				],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1
+					},
+					"description": {
+						"type": "string"
+					},
+					"privacy": {
+						"type": "string",
+						"enum": [
+							"PUBLIC",
+							"PROTECTED",
+							"SECRET"
+						],
+						"default": "PUBLIC"
+					}
+				}
+			},
+			"PinterestDefaultBoardRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"defaultBoardId"
+				],
+				"properties": {
+					"defaultBoardId": {
+						"type": "string",
+						"minLength": 1
+					},
+					"defaultBoardName": {
+						"type": "string"
+					}
+				}
+			},
+			"PinterestDefaultBoardResponse": {
+				"type": "object",
+				"required": [
+					"message",
+					"account"
+				],
+				"properties": {
+					"message": {
+						"type": "string",
+						"const": "Default Pinterest board updated successfully"
+					},
+					"account": {
+						"$ref": "#/components/schemas/Account"
+					}
+				}
+			},
+			"PinterestSelectBoardRequest": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": [
+					"state",
+					"boardId"
+				],
+				"properties": {
+					"state": {
+						"type": "string",
+						"minLength": 1
+					},
+					"boardId": {
+						"type": "string",
+						"minLength": 1
+					},
+					"boardName": {
+						"type": "string"
+					},
+					"redirectUrl": {
+						"type": "string",
+						"format": "uri"
+					}
+				}
+			},
+			"PinterestSelectBoardResponse": {
+				"type": "object",
+				"required": [
+					"message",
+					"account"
+				],
+				"properties": {
+					"message": {
+						"type": "string",
+						"const": "Pinterest connected successfully with default board"
+					},
+					"account": {
+						"$ref": "#/components/schemas/Account"
+					},
+					"redirectUrl": {
+						"type": "string",
+						"format": "uri"
+					}
+				}
+			},
 			"AnalyticsErrorResponse": {
 				"allOf": [
 					{
@@ -3373,6 +4104,14 @@
 					"lastSyncedAt": {
 						"type": "string",
 						"format": "date-time"
+					},
+					"defaultBoardId": {
+						"type": "string",
+						"description": "Default Pinterest board id. Present only when one has been selected for a Pinterest account."
+					},
+					"defaultBoardName": {
+						"type": "string",
+						"description": "Default Pinterest board name. Present when Pinterest returned a name for the selected default board."
 					}
 				}
 			},
