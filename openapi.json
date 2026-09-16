@@ -5364,7 +5364,7 @@
 				],
 				"operationId": "listCommentAutomations",
 				"summary": "List comment automations",
-				"description": "Returns visible automations newest first, maximum 100. Reads use the plan per-minute limit. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"description": "Returns visible automations newest first, maximum 100. Reads use the plan per-minute limit. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons and image cards (template) fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
 				"parameters": [
 					{
 						"name": "profileId",
@@ -5420,7 +5420,7 @@
 				],
 				"operationId": "createCommentAutomation",
 				"summary": "Create a comment automation",
-				"description": "Requires read_write. Limited to 60 creates per hour per user. Per-post automations take priority over account-wide automations. One matching automation wins, and each contact receives at most one pending or successful send per automation and source. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"description": "Requires read_write. Limited to 60 creates per hour per user. Per-post automations take priority over account-wide automations. One matching automation wins, and each contact receives at most one pending or successful send per automation and source. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons and image cards (template) fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -5480,7 +5480,7 @@
 				],
 				"operationId": "getCommentAutomation",
 				"summary": "Get a comment automation",
-				"description": "Returns the automation and 20 newest logs. Out-of-scope ids return 404 automationNotFound. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"description": "Returns the automation and 20 newest logs. Out-of-scope ids return 404 automationNotFound. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons and image cards (template) fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
 				"parameters": [
 					{
 						"name": "automationId",
@@ -5528,7 +5528,7 @@
 				],
 				"operationId": "updateCommentAutomation",
 				"summary": "Update a comment automation",
-				"description": "Requires read_write. Limited to 120 updates per hour per user. Inactive automations are not evaluated; pending deliveries are skipped when disabled. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"description": "Requires read_write. Limited to 120 updates per hour per user. Inactive automations are not evaluated; pending deliveries are skipped when disabled. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons and image cards (template) fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
 				"parameters": [
 					{
 						"name": "automationId",
@@ -5596,7 +5596,7 @@
 				],
 				"operationId": "deleteCommentAutomation",
 				"summary": "Delete a comment automation",
-				"description": "Requires read_write. Limited to 60 deletes per hour per user. Deletes the automation and its logs in batches. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"description": "Requires read_write. Limited to 60 deletes per hour per user. Deletes the automation and its logs in batches. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons and image cards (template) fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
 				"parameters": [
 					{
 						"name": "automationId",
@@ -5664,7 +5664,7 @@
 				],
 				"operationId": "listCommentAutomationLogs",
 				"summary": "List comment automation logs",
-				"description": "Newest logs first. total is capped at 5000 matching rows. Misses are not logged. Out-of-scope ids return 404 automationNotFound. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"description": "Newest logs first. total is capped at 5000 matching rows. Misses are not logged. Out-of-scope ids return 404 automationNotFound. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons and image cards (template) fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
 				"parameters": [
 					{
 						"name": "automationId",
@@ -6445,6 +6445,9 @@
 						"maxItems": 3,
 						"default": []
 					},
+					"template": {
+						"$ref": "#/components/schemas/CommentAutomationTemplate"
+					},
 					"commentReply": {
 						"type": "string",
 						"minLength": 1,
@@ -6564,8 +6567,7 @@
 				"type": "object",
 				"required": [
 					"accountId",
-					"name",
-					"dmMessage"
+					"name"
 				],
 				"properties": {
 					"accountId": {
@@ -6642,7 +6644,7 @@
 						"type": "string",
 						"minLength": 1,
 						"maxLength": 1000,
-						"description": "Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters."
+						"description": "Required unless template is set. Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters. Ignored when a template is sent."
 					},
 					"dmMessageVariations": {
 						"type": "array",
@@ -6661,7 +6663,11 @@
 							"$ref": "#/components/schemas/CommentAutomationButton"
 						},
 						"maxItems": 3,
-						"default": []
+						"default": [],
+						"description": "Mutually exclusive with template."
+					},
+					"template": {
+						"$ref": "#/components/schemas/CommentAutomationTemplate"
 					},
 					"commentReply": {
 						"type": "string",
@@ -6706,7 +6712,7 @@
 					}
 				},
 				"additionalProperties": false,
-				"description": "Maximum 100 automations per user; at most one active per-post automation for each account and post reference. template, audience, followGate, alsoMatchInDms, clickTag and linkTracking:true return 400 unsupported. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages."
+				"description": "Maximum 100 automations per user; at most one active per-post automation for each account and post reference. audience, followGate, alsoMatchInDms, clickTag and linkTracking:true return 400 unsupported. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons and image cards (template) fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages."
 			},
 			"CommentAutomationUpdateRequest": {
 				"type": "object",
@@ -6800,7 +6806,19 @@
 							"$ref": "#/components/schemas/CommentAutomationButton"
 						},
 						"maxItems": 3,
-						"default": []
+						"default": [],
+						"description": "Mutually exclusive with template. Pass [] to clear."
+					},
+					"template": {
+						"oneOf": [
+							{
+								"$ref": "#/components/schemas/CommentAutomationTemplate"
+							},
+							{
+								"type": "null"
+							}
+						],
+						"description": "Send null to remove the card and go back to dmMessage."
 					},
 					"commentReply": {
 						"type": "string",
@@ -11379,6 +11397,74 @@
 							"type": "string",
 							"format": "date-time"
 						}
+					}
+				}
+			},
+			"CommentAutomationTemplateElement": {
+				"type": "object",
+				"required": [
+					"title",
+					"imageUrl"
+				],
+				"properties": {
+					"title": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80,
+						"description": "Card title. Trimmed."
+					},
+					"subtitle": {
+						"type": "string",
+						"maxLength": 80,
+						"description": "Optional line under the title."
+					},
+					"imageUrl": {
+						"type": "string",
+						"format": "uri",
+						"pattern": "^https://",
+						"description": "Public HTTPS image URL that Meta fetches. `POST /v1/media/presign` returns one that qualifies."
+					},
+					"buttons": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CommentAutomationButton"
+						},
+						"maxItems": 3,
+						"default": [],
+						"description": "Up to three link buttons under the card."
+					}
+				}
+			},
+			"CommentAutomationTemplate": {
+				"type": "object",
+				"required": [
+					"type",
+					"elements"
+				],
+				"description": "Meta generic template: an image card sent instead of dmMessage and buttons. If Meta rejects it for a send, PostZen resends the card's title, subtitle, image URL, and button links as plain text and marks the log buttonsDropped.",
+				"properties": {
+					"type": {
+						"type": "string",
+						"enum": [
+							"generic"
+						]
+					},
+					"imageAspectRatio": {
+						"type": "string",
+						"enum": [
+							"horizontal",
+							"square"
+						],
+						"default": "horizontal"
+					},
+					"elements": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CommentAutomationTemplateElement"
+						},
+						"minItems": 1,
+						"maxItems": 10,
+						"description": "One card per element. Instagram renders several as a swipeable carousel."
 					}
 				}
 			}

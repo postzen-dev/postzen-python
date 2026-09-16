@@ -52,202 +52,6 @@ class CommentAutomationButton(BaseModel):
     ]
 
 
-class CommentAutomationCreateRequest(BaseModel):
-    model_config = ConfigDict(
-        extra='ignore',
-        populate_by_name=True,
-    )
-    accountId: Annotated[
-        str,
-        Field(description='Connected Instagram account id. Immutable after creation.'),
-    ]
-    profileId: Annotated[
-        str | None, Field(description='If supplied, must equal the account profile.')
-    ] = None
-    name: Annotated[
-        str, Field(description='Trimmed name.', max_length=120, min_length=1)
-    ]
-    trigger: Literal['comment', 'story_reply'] | None = 'comment'
-    platformPostId: Annotated[
-        str | None,
-        Field(
-            description='Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching.'
-        ),
-    ] = None
-    postId: Annotated[
-        str | None,
-        Field(
-            description='Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId.'
-        ),
-    ] = None
-    postTitle: Annotated[str | None, Field(max_length=200)] = None
-    keywords: Annotated[
-        list[Keyword] | None,
-        Field(
-            description='Trimmed and deduplicated case-insensitively. Empty matches every comment.',
-            max_length=50,
-            validate_default=True,
-        ),
-    ] = []
-    matchMode: Literal['exact', 'contains', 'word'] | None = 'contains'
-    excludeKeywords: Annotated[
-        list[ExcludeKeyword] | None,
-        Field(
-            description='Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively.',
-            max_length=50,
-            validate_default=True,
-        ),
-    ] = []
-    typoTolerance: Annotated[
-        bool | None,
-        Field(
-            description='word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4.'
-        ),
-    ] = False
-    dmMessage: Annotated[
-        str,
-        Field(
-            description='Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters.',
-            max_length=1000,
-            min_length=1,
-        ),
-    ]
-    dmMessageVariations: Annotated[
-        list[DmMessageVariation] | None,
-        Field(
-            description='Same limits as dmMessage. Uniform random choice from the base message and variations.',
-            max_length=5,
-            validate_default=True,
-        ),
-    ] = []
-    buttons: Annotated[
-        list[CommentAutomationButton] | None, Field(max_length=3, validate_default=True)
-    ] = []
-    commentReply: Annotated[
-        str | None,
-        Field(
-            description='Optional public reply, sent only after successful comment DM. Ignored for story_reply.',
-            max_length=1000,
-            min_length=1,
-        ),
-    ] = None
-    commentReplyVariations: Annotated[
-        list[CommentReplyVariation] | None,
-        Field(
-            description='Uniform random choice independent of the DM.',
-            max_length=5,
-            validate_default=True,
-        ),
-    ] = []
-    dmDelaySeconds: Annotated[int | None, Field(ge=0, le=86400)] = 0
-    commentReplyDelaySeconds: Annotated[
-        int | None,
-        Field(
-            description='Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds).',
-            ge=0,
-            le=86400,
-        ),
-    ] = 0
-    isActive: bool | None = True
-    linkTracking: Literal[False] | None = False
-
-
-class CommentAutomationUpdateRequest(BaseModel):
-    model_config = ConfigDict(
-        extra='ignore',
-        populate_by_name=True,
-    )
-    profileId: Annotated[
-        str | None, Field(description='If supplied, must equal the account profile.')
-    ] = None
-    name: Annotated[
-        str | None, Field(description='Trimmed name.', max_length=120, min_length=1)
-    ] = None
-    trigger: Literal['comment', 'story_reply'] | None = 'comment'
-    platformPostId: Annotated[
-        str | None,
-        Field(
-            description='Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching.'
-        ),
-    ] = None
-    postId: Annotated[
-        str | None,
-        Field(
-            description='Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId.'
-        ),
-    ] = None
-    postTitle: Annotated[str | None, Field(max_length=200)] = None
-    keywords: Annotated[
-        list[Keyword] | None,
-        Field(
-            description='Trimmed and deduplicated case-insensitively. Empty matches every comment.',
-            max_length=50,
-            validate_default=True,
-        ),
-    ] = []
-    matchMode: Literal['exact', 'contains', 'word'] | None = 'contains'
-    excludeKeywords: Annotated[
-        list[ExcludeKeyword] | None,
-        Field(
-            description='Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively.',
-            max_length=50,
-            validate_default=True,
-        ),
-    ] = []
-    typoTolerance: Annotated[
-        bool | None,
-        Field(
-            description='word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4.'
-        ),
-    ] = False
-    dmMessage: Annotated[
-        str | None,
-        Field(
-            description='Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters.',
-            max_length=1000,
-            min_length=1,
-        ),
-    ] = None
-    dmMessageVariations: Annotated[
-        list[DmMessageVariation] | None,
-        Field(
-            description='Same limits as dmMessage. Uniform random choice from the base message and variations.',
-            max_length=5,
-            validate_default=True,
-        ),
-    ] = []
-    buttons: Annotated[
-        list[CommentAutomationButton] | None, Field(max_length=3, validate_default=True)
-    ] = []
-    commentReply: Annotated[
-        str | None,
-        Field(
-            description='Optional public reply, sent only after successful comment DM. Ignored for story_reply.',
-            max_length=1000,
-            min_length=1,
-        ),
-    ] = None
-    commentReplyVariations: Annotated[
-        list[CommentReplyVariation] | None,
-        Field(
-            description='Uniform random choice independent of the DM.',
-            max_length=5,
-            validate_default=True,
-        ),
-    ] = []
-    dmDelaySeconds: Annotated[int | None, Field(ge=0, le=86400)] = 0
-    commentReplyDelaySeconds: Annotated[
-        int | None,
-        Field(
-            description='Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds).',
-            ge=0,
-            le=86400,
-        ),
-    ] = 0
-    isActive: bool | None = True
-    linkTracking: Literal[False] | None = False
-
-
 class CommentAutomationLog(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -2778,6 +2582,51 @@ class QueuePreviewResponse(BaseModel):
     slots: list[datetime]
 
 
+class CommentAutomationTemplateElement(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    title: Annotated[
+        str, Field(description='Card title. Trimmed.', max_length=80, min_length=1)
+    ]
+    subtitle: Annotated[
+        str | None, Field(description='Optional line under the title.', max_length=80)
+    ] = None
+    imageUrl: Annotated[
+        str,
+        Field(
+            description='Public HTTPS image URL that Meta fetches. `POST /v1/media/presign` returns one that qualifies.',
+            pattern='^https://',
+        ),
+    ]
+    buttons: Annotated[
+        list[CommentAutomationButton] | None,
+        Field(
+            description='Up to three link buttons under the card.',
+            max_length=3,
+            validate_default=True,
+        ),
+    ] = []
+
+
+class CommentAutomationTemplate(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    type: Literal['generic']
+    imageAspectRatio: Literal['horizontal', 'square'] | None = 'horizontal'
+    elements: Annotated[
+        list[CommentAutomationTemplateElement],
+        Field(
+            description='One card per element. Instagram renders several as a swipeable carousel.',
+            max_length=10,
+            min_length=1,
+        ),
+    ]
+
+
 class CommentAutomation(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -2844,6 +2693,7 @@ class CommentAutomation(BaseModel):
         ),
     ]
     buttons: Annotated[list[CommentAutomationButton], Field(max_length=3)]
+    template: CommentAutomationTemplate | None = None
     commentReply: Annotated[
         str | None,
         Field(
@@ -2873,6 +2723,217 @@ class CommentAutomation(BaseModel):
     stats: Stats
     createdAt: datetime
     updatedAt: datetime
+
+
+class CommentAutomationCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: Annotated[
+        str,
+        Field(description='Connected Instagram account id. Immutable after creation.'),
+    ]
+    profileId: Annotated[
+        str | None, Field(description='If supplied, must equal the account profile.')
+    ] = None
+    name: Annotated[
+        str, Field(description='Trimmed name.', max_length=120, min_length=1)
+    ]
+    trigger: Literal['comment', 'story_reply'] | None = 'comment'
+    platformPostId: Annotated[
+        str | None,
+        Field(
+            description='Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching.'
+        ),
+    ] = None
+    postId: Annotated[
+        str | None,
+        Field(
+            description='Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId.'
+        ),
+    ] = None
+    postTitle: Annotated[str | None, Field(max_length=200)] = None
+    keywords: Annotated[
+        list[Keyword] | None,
+        Field(
+            description='Trimmed and deduplicated case-insensitively. Empty matches every comment.',
+            max_length=50,
+            validate_default=True,
+        ),
+    ] = []
+    matchMode: Literal['exact', 'contains', 'word'] | None = 'contains'
+    excludeKeywords: Annotated[
+        list[ExcludeKeyword] | None,
+        Field(
+            description='Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively.',
+            max_length=50,
+            validate_default=True,
+        ),
+    ] = []
+    typoTolerance: Annotated[
+        bool | None,
+        Field(
+            description='word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4.'
+        ),
+    ] = False
+    dmMessage: Annotated[
+        str | None,
+        Field(
+            description='Required unless template is set. Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters. Ignored when a template is sent.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ] = None
+    dmMessageVariations: Annotated[
+        list[DmMessageVariation] | None,
+        Field(
+            description='Same limits as dmMessage. Uniform random choice from the base message and variations.',
+            max_length=5,
+            validate_default=True,
+        ),
+    ] = []
+    buttons: Annotated[
+        list[CommentAutomationButton] | None,
+        Field(
+            description='Mutually exclusive with template.',
+            max_length=3,
+            validate_default=True,
+        ),
+    ] = []
+    template: CommentAutomationTemplate | None = None
+    commentReply: Annotated[
+        str | None,
+        Field(
+            description='Optional public reply, sent only after successful comment DM. Ignored for story_reply.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ] = None
+    commentReplyVariations: Annotated[
+        list[CommentReplyVariation] | None,
+        Field(
+            description='Uniform random choice independent of the DM.',
+            max_length=5,
+            validate_default=True,
+        ),
+    ] = []
+    dmDelaySeconds: Annotated[int | None, Field(ge=0, le=86400)] = 0
+    commentReplyDelaySeconds: Annotated[
+        int | None,
+        Field(
+            description='Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds).',
+            ge=0,
+            le=86400,
+        ),
+    ] = 0
+    isActive: bool | None = True
+    linkTracking: Literal[False] | None = False
+
+
+class CommentAutomationUpdateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    profileId: Annotated[
+        str | None, Field(description='If supplied, must equal the account profile.')
+    ] = None
+    name: Annotated[
+        str | None, Field(description='Trimmed name.', max_length=120, min_length=1)
+    ] = None
+    trigger: Literal['comment', 'story_reply'] | None = 'comment'
+    platformPostId: Annotated[
+        str | None,
+        Field(
+            description='Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching.'
+        ),
+    ] = None
+    postId: Annotated[
+        str | None,
+        Field(
+            description='Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId.'
+        ),
+    ] = None
+    postTitle: Annotated[str | None, Field(max_length=200)] = None
+    keywords: Annotated[
+        list[Keyword] | None,
+        Field(
+            description='Trimmed and deduplicated case-insensitively. Empty matches every comment.',
+            max_length=50,
+            validate_default=True,
+        ),
+    ] = []
+    matchMode: Literal['exact', 'contains', 'word'] | None = 'contains'
+    excludeKeywords: Annotated[
+        list[ExcludeKeyword] | None,
+        Field(
+            description='Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively.',
+            max_length=50,
+            validate_default=True,
+        ),
+    ] = []
+    typoTolerance: Annotated[
+        bool | None,
+        Field(
+            description='word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4.'
+        ),
+    ] = False
+    dmMessage: Annotated[
+        str | None,
+        Field(
+            description='Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ] = None
+    dmMessageVariations: Annotated[
+        list[DmMessageVariation] | None,
+        Field(
+            description='Same limits as dmMessage. Uniform random choice from the base message and variations.',
+            max_length=5,
+            validate_default=True,
+        ),
+    ] = []
+    buttons: Annotated[
+        list[CommentAutomationButton] | None,
+        Field(
+            description='Mutually exclusive with template. Pass [] to clear.',
+            max_length=3,
+            validate_default=True,
+        ),
+    ] = []
+    template: Annotated[
+        CommentAutomationTemplate | None,
+        Field(description='Send null to remove the card and go back to dmMessage.'),
+    ] = None
+    commentReply: Annotated[
+        str | None,
+        Field(
+            description='Optional public reply, sent only after successful comment DM. Ignored for story_reply.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ] = None
+    commentReplyVariations: Annotated[
+        list[CommentReplyVariation] | None,
+        Field(
+            description='Uniform random choice independent of the DM.',
+            max_length=5,
+            validate_default=True,
+        ),
+    ] = []
+    dmDelaySeconds: Annotated[int | None, Field(ge=0, le=86400)] = 0
+    commentReplyDelaySeconds: Annotated[
+        int | None,
+        Field(
+            description='Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds).',
+            ge=0,
+            le=86400,
+        ),
+    ] = 0
+    isActive: bool | None = True
+    linkTracking: Literal[False] | None = False
 
 
 class CommentAutomationListResponse(BaseModel):
