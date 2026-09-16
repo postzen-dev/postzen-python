@@ -31,10 +31,15 @@ def test_all_spec_endpoints_are_available(client):
         ],
         "media": [
             "create_media_presign",
+            "upload_media_direct",
         ],
         "posts": [
+            "bulk_upload_posts",
             "list_posts",
             "create_post",
+            "get_post",
+            "update_post",
+            "delete_post",
             "list_post_comments",
             "list_post_reactions",
         ],

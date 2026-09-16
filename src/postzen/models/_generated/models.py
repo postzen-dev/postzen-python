@@ -10,12 +10,334 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 
+class Keyword(RootModel[str]):
+    root: Annotated[str, Field(max_length=100, min_length=1)]
+
+
+class ExcludeKeyword(RootModel[str]):
+    root: Annotated[str, Field(max_length=100, min_length=1)]
+
+
+class DmMessageVariation(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class CommentReplyVariation(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000, min_length=1)]
+
+
+class Stats(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    totalTriggered: Annotated[int, Field(ge=0)]
+    totalSent: Annotated[int, Field(ge=0)]
+    totalFailed: Annotated[int, Field(ge=0)]
+
+
+class CommentAutomationButton(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    type: Literal['url']
+    title: Annotated[str, Field(max_length=20, min_length=1)]
+    url: Annotated[
+        str,
+        Field(
+            description='Public HTTP(S) URL; private hosts and embedded credentials are rejected.',
+            pattern='^https?://',
+        ),
+    ]
+
+
+class CommentAutomationCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: Annotated[
+        str,
+        Field(description='Connected Instagram account id. Immutable after creation.'),
+    ]
+    profileId: Annotated[
+        str | None, Field(description='If supplied, must equal the account profile.')
+    ] = None
+    name: Annotated[
+        str, Field(description='Trimmed name.', max_length=120, min_length=1)
+    ]
+    trigger: Literal['comment', 'story_reply'] | None = 'comment'
+    platformPostId: Annotated[
+        str | None,
+        Field(
+            description='Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching.'
+        ),
+    ] = None
+    postId: Annotated[
+        str | None,
+        Field(
+            description='Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId.'
+        ),
+    ] = None
+    postTitle: Annotated[str | None, Field(max_length=200)] = None
+    keywords: Annotated[
+        list[Keyword] | None,
+        Field(
+            description='Trimmed and deduplicated case-insensitively. Empty matches every comment.',
+            max_length=50,
+            validate_default=True,
+        ),
+    ] = []
+    matchMode: Literal['exact', 'contains', 'word'] | None = 'contains'
+    excludeKeywords: Annotated[
+        list[ExcludeKeyword] | None,
+        Field(
+            description='Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively.',
+            max_length=50,
+            validate_default=True,
+        ),
+    ] = []
+    typoTolerance: Annotated[
+        bool | None,
+        Field(
+            description='word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4.'
+        ),
+    ] = False
+    dmMessage: Annotated[
+        str,
+        Field(
+            description='Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ]
+    dmMessageVariations: Annotated[
+        list[DmMessageVariation] | None,
+        Field(
+            description='Same limits as dmMessage. Uniform random choice from the base message and variations.',
+            max_length=5,
+            validate_default=True,
+        ),
+    ] = []
+    buttons: Annotated[
+        list[CommentAutomationButton] | None, Field(max_length=3, validate_default=True)
+    ] = []
+    commentReply: Annotated[
+        str | None,
+        Field(
+            description='Optional public reply, sent only after successful comment DM. Ignored for story_reply.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ] = None
+    commentReplyVariations: Annotated[
+        list[CommentReplyVariation] | None,
+        Field(
+            description='Uniform random choice independent of the DM.',
+            max_length=5,
+            validate_default=True,
+        ),
+    ] = []
+    dmDelaySeconds: Annotated[int | None, Field(ge=0, le=86400)] = 0
+    commentReplyDelaySeconds: Annotated[
+        int | None,
+        Field(
+            description='Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds).',
+            ge=0,
+            le=86400,
+        ),
+    ] = 0
+    isActive: bool | None = True
+    linkTracking: Literal[False] | None = False
+
+
+class CommentAutomationUpdateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    profileId: Annotated[
+        str | None, Field(description='If supplied, must equal the account profile.')
+    ] = None
+    name: Annotated[
+        str | None, Field(description='Trimmed name.', max_length=120, min_length=1)
+    ] = None
+    trigger: Literal['comment', 'story_reply'] | None = 'comment'
+    platformPostId: Annotated[
+        str | None,
+        Field(
+            description='Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching.'
+        ),
+    ] = None
+    postId: Annotated[
+        str | None,
+        Field(
+            description='Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId.'
+        ),
+    ] = None
+    postTitle: Annotated[str | None, Field(max_length=200)] = None
+    keywords: Annotated[
+        list[Keyword] | None,
+        Field(
+            description='Trimmed and deduplicated case-insensitively. Empty matches every comment.',
+            max_length=50,
+            validate_default=True,
+        ),
+    ] = []
+    matchMode: Literal['exact', 'contains', 'word'] | None = 'contains'
+    excludeKeywords: Annotated[
+        list[ExcludeKeyword] | None,
+        Field(
+            description='Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively.',
+            max_length=50,
+            validate_default=True,
+        ),
+    ] = []
+    typoTolerance: Annotated[
+        bool | None,
+        Field(
+            description='word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4.'
+        ),
+    ] = False
+    dmMessage: Annotated[
+        str | None,
+        Field(
+            description='Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ] = None
+    dmMessageVariations: Annotated[
+        list[DmMessageVariation] | None,
+        Field(
+            description='Same limits as dmMessage. Uniform random choice from the base message and variations.',
+            max_length=5,
+            validate_default=True,
+        ),
+    ] = []
+    buttons: Annotated[
+        list[CommentAutomationButton] | None, Field(max_length=3, validate_default=True)
+    ] = []
+    commentReply: Annotated[
+        str | None,
+        Field(
+            description='Optional public reply, sent only after successful comment DM. Ignored for story_reply.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ] = None
+    commentReplyVariations: Annotated[
+        list[CommentReplyVariation] | None,
+        Field(
+            description='Uniform random choice independent of the DM.',
+            max_length=5,
+            validate_default=True,
+        ),
+    ] = []
+    dmDelaySeconds: Annotated[int | None, Field(ge=0, le=86400)] = 0
+    commentReplyDelaySeconds: Annotated[
+        int | None,
+        Field(
+            description='Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds).',
+            ge=0,
+            le=86400,
+        ),
+    ] = 0
+    isActive: bool | None = True
+    linkTracking: Literal[False] | None = False
+
+
+class CommentAutomationLog(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str
+    commentId: str
+    platformPostId: str | None = None
+    commenterId: str
+    commenterName: str | None = None
+    commentText: str | None = None
+    skipReason: str | None = None
+    error: str | None = None
+    sentMessageId: str | None = None
+    commentReplyError: str | None = None
+    source: Literal['comment', 'story_reply']
+    status: Literal['pending', 'sent', 'failed', 'skipped']
+    buttonsDropped: bool | None = None
+    commentReplyStatus: Literal['pending', 'sent', 'failed', 'skipped'] | None = None
+    nextDueAt: datetime | None = None
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class Pagination(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    total: Annotated[int, Field(le=5000)]
+    limit: Annotated[int, Field(ge=1, le=200)]
+    skip: Annotated[int, Field(ge=0)]
+    hasMore: bool
+
+
+class CommentAutomationLogsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    logs: list[CommentAutomationLog]
+    pagination: Pagination
+
+
+class Results(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    rowIndex: Annotated[int, Field(ge=1)]
+    ok: Literal[True]
+    createdPostId: Annotated[
+        str | None,
+        Field(
+            description='Present when the row was created by this request or replayed from a previous request with the same idempotency inputs. On dry-run, only replayed rows include this field.'
+        ),
+    ] = None
+
+
+class Results1(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    rowIndex: Annotated[int, Field(ge=1)]
+    ok: Literal[False]
+    errors: list[str]
+
+
+class BulkUploadResult(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    total: Annotated[int, Field(ge=0, le=500)]
+    valid: Annotated[int, Field(ge=0)]
+    invalid: Annotated[int, Field(ge=0)]
+    results: list[Results | Results1]
+    warnings: list[str]
+
+
 class ErrorResponse(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
         populate_by_name=True,
     )
     error: str
+    type: str | None = None
+    code: str | None = None
+    param: str | None = None
 
 
 class PinterestBoard(BaseModel):
@@ -448,9 +770,23 @@ class Details(BaseModel):
         extra='ignore',
         populate_by_name=True,
     )
-    freeTierAccountLimit: float | None = None
+    planId: Literal['free', 'starter', 'pro', 'scale'] | None = None
+    includedAccounts: float | None = None
+    freeTierAccountLimit: Annotated[
+        float | None,
+        Field(
+            description='Same value as `includedAccounts`; retained for compatibility.'
+        ),
+    ] = None
     currentAccountCount: float | None = None
     hasPaymentMethod: bool | None = None
+    postsUsed: Annotated[
+        float | None,
+        Field(description='Platform-posts already counted in the current UTC month.'),
+    ] = None
+    postLimit: Annotated[
+        float | None, Field(description="The plan's monthly platform-post allowance.")
+    ] = None
 
 
 class PaymentRequiredError(BaseModel):
@@ -460,10 +796,20 @@ class PaymentRequiredError(BaseModel):
     )
     error: str
     code: Literal['paymentRequired']
-    reason: Literal['freeTierExceeded', 'xRequiresPaymentMethod']
+    reason: Literal[
+        'freeTierExceeded',
+        'xRequiresPaymentMethod',
+        'accountPaused',
+        'freePostLimitExceeded',
+    ]
     documentationUrl: str
     dashboardUrl: str
-    details: Details | None = None
+    details: Annotated[
+        Details | None,
+        Field(
+            description='Reason-specific context. Account-connection limits use the plan and account fields; `freePostLimitExceeded` uses `postsUsed` and `postLimit`.'
+        ),
+    ] = None
 
 
 class MessageResponse(BaseModel):
@@ -601,7 +947,7 @@ class Account(BaseModel):
     ] = None
 
 
-class Pagination(BaseModel):
+class PaginationModel(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
         populate_by_name=True,
@@ -618,7 +964,7 @@ class AccountsListResponse(BaseModel):
         populate_by_name=True,
     )
     accounts: list[Account]
-    pagination: Pagination | None = None
+    pagination: PaginationModel | None = None
 
 
 class LinkedInComment(BaseModel):
@@ -745,6 +1091,666 @@ class RateLimitError(BaseModel):
     ]
 
 
+class From(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str | None = None
+    name: str | None = None
+    username: str | None = None
+    picture: str | None = None
+    isOwner: Annotated[
+        bool, Field(description='True when the connected account wrote the comment.')
+    ]
+
+
+class InboxComment(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Platform comment id. Pass it as `commentId` to the reply, delete, and hide endpoints.'
+        ),
+    ]
+    message: Annotated[str, Field(description='Comment body as plain text.')]
+    createdTime: Annotated[
+        datetime, Field(description='When the platform recorded the comment.')
+    ]
+    from_: Annotated[From, Field(alias='from', description='Author of the comment.')]
+    likeCount: Annotated[
+        int | None,
+        Field(
+            description='Likes on the comment, when the platform reports a count. Threads never does.'
+        ),
+    ] = None
+    replyCount: Annotated[
+        int | None,
+        Field(description='Replies to the comment, when the platform reports a count.'),
+    ] = None
+    platform: Annotated[
+        Literal['instagram', 'facebook', 'threads'],
+        Field(description='Platform the comment lives on.'),
+    ]
+    url: Annotated[
+        str | None,
+        Field(description='Permalink to the comment, when the platform returns one.'),
+    ] = None
+    replies: Annotated[
+        list[InboxComment],
+        Field(
+            description="First page of nested replies, when the listing returned them cheaply. Instagram threads are two levels deep, so a reply's own `replies` is always empty."
+        ),
+    ]
+    repliesHasMore: Annotated[
+        bool,
+        Field(
+            description="True when the comment has replies beyond the ones in `replies`. Fetch them by passing this comment's id as `commentId`."
+        ),
+    ]
+    canReply: Annotated[
+        bool,
+        Field(
+            description="True when the connected account's granted scopes and the platform's own rules allow replying to this comment."
+        ),
+    ]
+    canDelete: Annotated[
+        bool,
+        Field(
+            description='True when this comment can be deleted. Facebook reports it per comment; Threads reports it only for replies the connected account wrote.'
+        ),
+    ]
+    canHide: Annotated[
+        bool,
+        Field(
+            description="True when this comment can be hidden. Facebook reports it per comment; on Threads only top-level replies on the account's own posts qualify."
+        ),
+    ]
+    isHidden: Annotated[
+        bool,
+        Field(
+            description="True when the comment is currently hidden. Threads' `HIDDEN` and `COVERED` states both map to true."
+        ),
+    ]
+    parentId: Annotated[
+        str | None,
+        Field(
+            description='Comment this one replies to, or `null` when it is a top-level comment on the post.'
+        ),
+    ]
+
+
+class Pagination1(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    hasMore: Annotated[
+        bool, Field(description='True when the platform has another page of comments.')
+    ]
+    cursor: Annotated[
+        str | None,
+        Field(
+            description='Opaque cursor for the next page. Present only when `hasMore` is true.'
+        ),
+    ] = None
+
+
+class Meta(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    platform: Annotated[
+        Literal['instagram', 'facebook', 'threads'],
+        Field(description='Platform the comment lives on.'),
+    ]
+    postId: Annotated[
+        str,
+        Field(
+            description='Platform post id the comments were read from. When a PostZen post id was supplied it is the resolved platform id, not the id you sent.'
+        ),
+    ]
+    accountId: Annotated[
+        str, Field(description='PostZen account id used for the read.')
+    ]
+    lastUpdated: Annotated[
+        datetime, Field(description='When PostZen fetched this page from the platform.')
+    ]
+
+
+class InboxCommentsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    status: Literal['success']
+    comments: list[InboxComment]
+    pagination: Pagination1
+    meta: Meta
+
+
+class InboxReplyRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: Annotated[
+        str,
+        Field(
+            description='PostZen account id of the connected Instagram, Facebook, or Threads account that owns the post.'
+        ),
+    ]
+    message: Annotated[str, Field(description='Comment text to publish.')]
+    commentId: Annotated[
+        str | None,
+        Field(
+            description='Reply to this comment instead of commenting on the post. On Instagram a reply to a reply is redirected to its top-level parent.'
+        ),
+    ] = None
+    attachmentUrl: Annotated[
+        str | None,
+        Field(
+            description='Facebook only. Publicly reachable image URL to attach to the comment. Sending it for any other platform returns `400 attachmentUnsupported`.'
+        ),
+    ] = None
+
+
+class Data(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    commentId: Annotated[
+        str, Field(description='Platform id of the comment that was created.')
+    ]
+    isReply: Annotated[
+        bool,
+        Field(
+            description='True when the comment was published as a reply to another comment rather than directly on the post.'
+        ),
+    ]
+
+
+class InboxReplyResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    success: Literal[True]
+    data: Data
+
+
+class InboxHideRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: Annotated[
+        str,
+        Field(
+            description='PostZen account id of the connected Instagram, Facebook, or Threads account that owns the post.'
+        ),
+    ]
+
+
+class InboxHideResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    status: Literal['success']
+    commentId: Annotated[str, Field(description='Platform id of the comment.')]
+    hidden: Annotated[
+        bool, Field(description="The comment's hidden state after the call.")
+    ]
+    platform: Annotated[
+        Literal['instagram', 'facebook', 'threads'],
+        Field(description='Platform the comment lives on.'),
+    ]
+
+
+class InboxActionResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    success: Literal[True]
+    data: MessageResponse
+
+
+class InboxErrorResponse(ErrorResponse):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    code: Annotated[
+        str | None,
+        Field(
+            description="Machine-readable failure reason. PostZen's own reasons are `accountNotFound`, `forbidden`, `platformUnsupported`, `platformCapabilityMissing`, `connectionDead`, `postNotFound`, `postNotPublished`, `attachmentUnsupported`, and `publishPending` (Threads accepted the reply container but had not published it yet — the reply may still appear, so check the thread before retrying). Failures raised by the platform carry the platform's own error code instead, which for Meta is a numeric string such as `100` or `190`. Absent on plain parameter-validation errors and on PostZen's own rate-limit response."
+        ),
+    ] = None
+    platform: Annotated[
+        str | None,
+        Field(
+            description="Platform the failure relates to, when PostZen could determine one. `platformUnsupported` reports the account's actual platform, which is why this is not limited to the three inbox platforms."
+        ),
+    ] = None
+    platformError: Annotated[
+        str | None,
+        Field(
+            description="The platform's own error message, present when the failure came from the platform rather than from PostZen."
+        ),
+    ] = None
+
+
+class Participant(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str
+    name: str | None = None
+    username: str | None = None
+
+
+class InboxConversation(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description="The platform's own conversation (thread) id. This is the `conversationId` every other conversation endpoint takes, not a PostZen document id."
+        ),
+    ]
+    platform: Annotated[
+        Literal['instagram'], Field(description='Platform the thread lives on.')
+    ]
+    accountId: Annotated[
+        str, Field(description='PostZen account id the thread belongs to.')
+    ]
+    accountUsername: Annotated[
+        str,
+        Field(
+            description='Username of that connected account, so a multi-account list needs no second lookup.'
+        ),
+    ]
+    participantId: Annotated[
+        str | None,
+        Field(
+            description="The other party's platform id (the IGSID on Instagram). Absent when the platform did not name the participant."
+        ),
+    ] = None
+    participantName: str | None = None
+    participantUsername: str | None = None
+    participantPicture: str | None = None
+    participants: Annotated[
+        list[Participant] | None,
+        Field(
+            description='Every party on the thread, including the connected account itself. Present when the platform returned the participant edge.'
+        ),
+    ] = None
+    lastMessage: Annotated[
+        str | None,
+        Field(
+            description='Text of the most recent message PostZen has synced, when the platform reported one cheaply.'
+        ),
+    ] = None
+    lastMessageAt: datetime | None = None
+    updatedTime: Annotated[
+        datetime,
+        Field(
+            description="The platform's own last-activity time for the thread. This is the list sort key."
+        ),
+    ]
+    status: Annotated[
+        Literal['active', 'archived'],
+        Field(
+            description='PostZen-local state. Meta has no archive API, so archiving affects PostZen only and is never overwritten by a sync.'
+        ),
+    ]
+    unreadCount: Annotated[
+        int,
+        Field(
+            description='Incoming messages newer than the local read watermark. Marking the thread read sets it to 0 and a later sync cannot resurrect a stale count.'
+        ),
+    ]
+    url: Annotated[
+        str | None,
+        Field(
+            description="Deep link into the platform's own inbox, when the platform reports one. Instagram has no equivalent, so it is currently always absent."
+        ),
+    ] = None
+
+
+class InboxDmPagination(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    hasMore: bool
+    nextCursor: Annotated[
+        str | None,
+        Field(
+            description='Pass back as `cursor` for the next page. `null` when the last page has been returned.'
+        ),
+    ]
+
+
+class InboxDmFailedAccount(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: str
+    accountUsername: str
+    platform: Literal['instagram']
+    error: Annotated[
+        str,
+        Field(
+            description='Why the refresh failed, in PostZen or the platform’s own words.'
+        ),
+    ]
+    code: str
+    retryAfter: Annotated[
+        int | None,
+        Field(description='Seconds the platform asked PostZen to wait, when it said.'),
+    ] = None
+
+
+class InboxDmMeta(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountsQueried: int
+    accountsFailed: int
+    failedAccounts: list[InboxDmFailedAccount]
+    lastUpdated: datetime
+
+
+class InboxConversationsResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    data: list[InboxConversation]
+    pagination: InboxDmPagination
+    meta: InboxDmMeta
+
+
+class InboxConversationResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    data: InboxConversation
+
+
+class InboxConversationSearchMatch(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str, Field(description='Platform message id of the matching message.')
+    ]
+    text: str | None = None
+    direction: Literal['incoming', 'outgoing']
+    timestamp: datetime
+
+
+class Conversation(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str
+    platform: Literal['instagram']
+    accountId: str
+    participantName: str | None = None
+    participantUsername: str | None = None
+    participantPicture: str | None = None
+    status: Literal['active', 'archived']
+    lastMessage: str | None = None
+    lastMessageAt: datetime | None = None
+
+
+class InboxConversationSearchHit(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    conversation: Conversation
+    matchCount: Annotated[
+        int,
+        Field(
+            description='Matching messages in the thread. `matches` carries at most the first five of them; a thread matched only on the participant’s name reports 0.'
+        ),
+    ]
+    matches: list[InboxConversationSearchMatch]
+
+
+class InboxConversationSearchResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    data: list[InboxConversationSearchHit]
+    pagination: InboxDmPagination
+    meta: InboxDmMeta
+
+
+class InboxConversationUpdateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: Annotated[
+        str, Field(description='PostZen account id that owns the conversation.')
+    ]
+    status: Literal['active', 'archived']
+
+
+class Data1(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str
+    accountId: str
+    status: Literal['active', 'archived']
+    platform: Literal['instagram']
+    updatedAt: datetime
+
+
+class InboxConversationUpdateResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    success: Literal[True]
+    data: Data1
+
+
+class InboxConversationReadRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: Annotated[
+        str, Field(description='PostZen account id that owns the conversation.')
+    ]
+
+
+class InboxConversationReadResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    success: Literal[True]
+    markedCount: Annotated[
+        int,
+        Field(
+            description='Incoming messages that crossed from unread to read on this call. Marking an already-read thread returns 0 rather than failing.'
+        ),
+    ]
+
+
+class InboxMessageAttachment(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str | None = None
+    type: Literal['image', 'video', 'audio', 'file']
+    url: Annotated[
+        str,
+        Field(
+            description='Platform-hosted URL. Meta expires these, so treat them as short-lived.'
+        ),
+    ]
+    previewUrl: str | None = None
+
+
+class InboxMessage(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='Platform message id.')]
+    conversationId: str
+    accountId: str
+    platform: Literal['instagram']
+    message: Annotated[
+        str | None,
+        Field(
+            description='Message text. Absent on an attachment-only message, and on older Instagram messages the platform no longer returns text for.'
+        ),
+    ] = None
+    senderId: str | None = None
+    senderName: str | None = None
+    direction: Annotated[
+        Literal['incoming', 'outgoing'],
+        Field(
+            description='Resolved against the connected account’s own identity: `outgoing` is a message the account sent.'
+        ),
+    ]
+    createdAt: datetime
+    attachments: list[InboxMessageAttachment] | None = None
+    storyReply: Annotated[
+        bool | None,
+        Field(
+            description='Instagram only, and present only when the platform said so.'
+        ),
+    ] = None
+    isStoryMention: Annotated[
+        bool | None,
+        Field(
+            description='Instagram only, and present only when the platform said so.'
+        ),
+    ] = None
+
+
+class InboxMessagesResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    status: Literal['ok']
+    pagination: InboxDmPagination
+    sortOrderApplied: Literal['asc', 'desc']
+    messages: list[InboxMessage]
+    lastUpdated: datetime
+
+
+class InboxMessageSendRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: Annotated[
+        str, Field(description='PostZen account id that owns the conversation.')
+    ]
+    message: Annotated[
+        str | None,
+        Field(
+            description='Message text. Cannot be combined with `attachmentUrl`: Meta accepts one payload per call, so a request carrying both is rejected with a 400 rather than silently sending half of it.'
+        ),
+    ] = None
+    attachmentUrl: Annotated[
+        str | None,
+        Field(
+            description='Publicly fetchable http(s) URL. Meta downloads it itself, so it must be reachable without credentials — `POST /v1/media/upload-direct` returns a URL that qualifies.'
+        ),
+    ] = None
+    attachmentType: Annotated[
+        Literal['image', 'video', 'audio', 'file'] | None,
+        Field(description='Required whenever `attachmentUrl` is set.'),
+    ] = None
+
+
+class Data2(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    messageId: str
+    conversationId: str
+    sentAt: datetime
+    message: str | None = None
+
+
+class InboxMessageSendResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    success: Literal[True]
+    data: Data2
+
+
+class PlatformError(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    code: int | None = None
+    subcode: int | None = None
+    fbtraceId: str | None = None
+    type: str | None = None
+
+
+class InboxDmErrorResponse(ErrorResponse):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    code: Annotated[
+        str | None,
+        Field(
+            description="Machine-readable failure reason. PostZen's own reasons are `accountNotFound`, `conversationNotFound`, `forbidden`, `platformUnsupported`, `platformCapabilityMissing`, `connectionDead`, `idempotencyConflict`, and `idempotencyInFlight`. `PLATFORM_LIMITATION` means the platform refused a send it could accept at another time — the 24-hour window has closed, or the recipient is unavailable — rather than that the request was wrong. Other platform failures carry the platform's own error code, which for Meta is a numeric string such as `100` or `190`. Absent on plain parameter-validation errors and on PostZen's own rate-limit response."
+        ),
+    ] = None
+    platform: Annotated[
+        str | None,
+        Field(
+            description='Platform the failure relates to, when PostZen could determine one.'
+        ),
+    ] = None
+    platformError: Annotated[
+        PlatformError | None,
+        Field(
+            description="Meta's own error envelope, passed through untouched. Fields Meta did not report are absent rather than null."
+        ),
+    ] = None
+
+
 class ConnectStartResponse(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -846,6 +1852,24 @@ class MediaPresignResponse(BaseModel):
     publicUrl: Annotated[str, Field(description='Use this URL in post `mediaItems`.')]
     key: str
     type: Literal['image', 'video', 'gif', 'document']
+
+
+class MediaDirectUploadResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    url: Annotated[
+        str,
+        Field(
+            description='Publicly fetchable URL for the stored file. Pass it as `attachmentUrl` when sending a direct message.'
+        ),
+    ]
+    filename: Annotated[
+        str, Field(description='Sanitized file name the object was stored under.')
+    ]
+    contentType: str
+    size: Annotated[int, Field(description='Stored size in bytes.')]
 
 
 class PostMediaItem(BaseModel):
@@ -1049,6 +2073,16 @@ class PinterestSettings(BaseModel):
         None
     )
     altText: str | None = None
+    coverImageUrl: Annotated[
+        str | None, Field(description='Cover or thumbnail image URL for video pins.')
+    ] = None
+    coverImageKeyFrameTime: Annotated[
+        float | None,
+        Field(
+            description='Cover keyframe time in seconds for video pins, as an alternative to coverImageUrl.',
+            ge=0.0,
+        ),
+    ] = None
 
 
 class AltText(RootModel[str]):
@@ -1247,6 +2281,626 @@ class ApiKeyCreateResponse(BaseModel):
     apiKey: ApiKeyWithSecret
 
 
+class WebhookCustomHeader(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    name: Annotated[
+        str,
+        Field(
+            description='HTTP header name. Content-Type, transport headers, and X-PostZen-* names are reserved.'
+        ),
+    ]
+    value: Annotated[
+        str,
+        Field(
+            description='Plaintext header value. PostZen encrypts it at rest and never returns it.',
+            max_length=4096,
+        ),
+    ]
+
+
+class Webhook(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str
+    name: Annotated[str, Field(max_length=80, min_length=1)]
+    url: str
+    events: Annotated[
+        list[
+            Literal[
+                'post.published',
+                'post.partially_failed',
+                'post.failed',
+                'account.needs_reauth',
+                'account.disconnected',
+                'webhook.test',
+            ]
+        ],
+        Field(min_length=1),
+    ]
+    profileAccess: Literal['all_profiles', 'selected_profiles']
+    profileIds: Annotated[
+        list[str],
+        Field(
+            description='Selected profile ids. Empty when profileAccess is all_profiles.'
+        ),
+    ]
+    hasSigningSecret: Annotated[
+        bool,
+        Field(
+            description='Whether PostZen signs deliveries for this endpoint. The secret itself is never returned.'
+        ),
+    ]
+    customHeaderNames: Annotated[
+        list[str],
+        Field(
+            description='Configured custom header names. Header values are never returned.'
+        ),
+    ]
+    isActive: bool
+    disabledReason: Literal['auto_consecutive_failures', 'user_disabled'] | None = None
+    consecutiveFailures: Annotated[int, Field(ge=0)]
+    lastDeliveredAt: datetime | None = None
+    lastFailedAt: datetime | None = None
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class WebhookCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    name: Annotated[str, Field(max_length=80, min_length=1)]
+    url: Annotated[str, Field(description='Public HTTPS endpoint URL.')]
+    events: Annotated[
+        list[
+            Literal[
+                'post.published',
+                'post.partially_failed',
+                'post.failed',
+                'account.needs_reauth',
+                'account.disconnected',
+                'webhook.test',
+            ]
+        ],
+        Field(min_length=1),
+    ]
+    profileAccess: Annotated[
+        Literal['all_profiles', 'selected_profiles'],
+        Field(
+            description='all_profiles receives events for every profile. selected_profiles requires profileIds.'
+        ),
+    ]
+    profileIds: Annotated[
+        list[str] | None,
+        Field(
+            description='Required for selected_profiles and omitted or empty for all_profiles.'
+        ),
+    ] = None
+    secret: Annotated[
+        str | None,
+        Field(
+            description='Optional HMAC signing secret. Omit or send null to create an unsigned endpoint.',
+            max_length=256,
+            min_length=1,
+        ),
+    ] = None
+    customHeaders: Annotated[list[WebhookCustomHeader] | None, Field(max_length=20)] = (
+        None
+    )
+    isActive: bool | None = True
+
+
+class WebhookUpdateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    name: Annotated[str | None, Field(max_length=80, min_length=1)] = None
+    url: str | None = None
+    events: Annotated[
+        list[
+            Literal[
+                'post.published',
+                'post.partially_failed',
+                'post.failed',
+                'account.needs_reauth',
+                'account.disconnected',
+                'webhook.test',
+            ]
+        ]
+        | None,
+        Field(min_length=1),
+    ] = None
+    profileAccess: Literal['all_profiles', 'selected_profiles'] | None = None
+    profileIds: Annotated[
+        list[str] | None,
+        Field(
+            description='Replacement profile selection. Must be non-empty for selected_profiles and empty for all_profiles.'
+        ),
+    ] = None
+    secret: Annotated[
+        str | None,
+        Field(
+            description='Omit to keep the stored secret, send a non-empty string to replace it, or send null to remove it.',
+            max_length=256,
+            min_length=1,
+        ),
+    ] = None
+    customHeaders: Annotated[
+        list[WebhookCustomHeader] | None,
+        Field(
+            description='Omit to keep stored headers. Send the complete collection to replace all headers, or [] to remove all headers. Every supplied value is plaintext and is encrypted at rest.',
+            max_length=20,
+        ),
+    ] = None
+    isActive: Annotated[
+        bool | None,
+        Field(
+            description='Enable or disable delivery. Re-enabling resets the consecutive exhausted-event count.'
+        ),
+    ] = None
+
+
+class WebhookDelivery(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    event: Annotated[
+        Literal[
+            'post.published',
+            'post.partially_failed',
+            'post.failed',
+            'account.needs_reauth',
+            'account.disconnected',
+            'webhook.test',
+        ],
+        Field(
+            description='Webhook event type. Receivers should tolerate additional event types in future API versions.'
+        ),
+    ]
+    eventId: Annotated[
+        str,
+        Field(description='Stable across automatic retries and manual redeliveries.'),
+    ]
+    deliveryId: str
+    resourceId: str
+    status: Literal['pending', 'retrying', 'delivered', 'failed']
+    attemptCount: Annotated[
+        int,
+        Field(
+            description='Monotonic count across automatic retries and manual redeliveries.',
+            ge=0,
+        ),
+    ]
+    lastHttpStatus: Annotated[int | None, Field(ge=100, le=599)] = None
+    lastErrorCode: str | None = None
+    lastDurationMs: Annotated[float | None, Field(ge=0.0)] = None
+    createdAt: datetime
+    lastAttemptAt: datetime | None = None
+    deliveredAt: datetime | None = None
+    nextAttemptAt: datetime | None = None
+
+
+class WebhooksListResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    webhooks: list[Webhook]
+
+
+class WebhookResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    webhook: Webhook
+
+
+class WebhookWriteResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: str
+    webhook: Webhook
+
+
+class WebhookTestResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: str
+    eventId: str
+    deliveryId: str
+
+
+class WebhookDeliveriesListResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    deliveries: list[WebhookDelivery]
+    pagination: PaginationModel
+
+
+class WebhookRedeliveryResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: str
+    delivery: WebhookDelivery
+
+
+class QueueSlot(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    dayOfWeek: Annotated[
+        int,
+        Field(
+            description='Day of the week, 0 = Sunday through 6 = Saturday.', ge=0, le=6
+        ),
+    ]
+    time: Annotated[
+        str,
+        Field(
+            description="24-hour wall-clock time (`HH:mm`) in the queue's timezone.",
+            pattern='^([01][0-9]|2[0-3]):[0-5][0-9]$',
+        ),
+    ]
+
+
+class QueueSchedule(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    field_id: Annotated[str, Field(alias='_id')]
+    profileId: str
+    name: Annotated[str, Field(max_length=100, min_length=1)]
+    description: Annotated[str | None, Field(max_length=500)] = None
+    timezone: Annotated[
+        str,
+        Field(
+            description='IANA timezone the slots are evaluated in, for example `America/Edmonton`.'
+        ),
+    ]
+    slots: Annotated[
+        list[QueueSlot],
+        Field(
+            description='Weekly slots, deduplicated and sorted by day then time.',
+            max_length=56,
+        ),
+    ]
+    active: Annotated[
+        bool,
+        Field(
+            description='Paused queues reject new queue-mode posts and report no upcoming slots.'
+        ),
+    ]
+    isDefault: Annotated[
+        bool, Field(description='Whether this queue answers when `queueId` is omitted.')
+    ]
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class QueueScheduleWithNextSlots(QueueSchedule):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    nextSlots: list[datetime]
+
+
+class QueueScheduleResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    exists: Annotated[
+        bool,
+        Field(
+            description='False when the profile has no matching queue; `schedule` is then null.'
+        ),
+    ]
+    schedule: QueueSchedule | None
+    nextSlots: Annotated[
+        list[datetime],
+        Field(
+            description='Next five instants this queue would hand out, occupied slots already skipped.'
+        ),
+    ]
+
+
+class QueueSchedulesResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    exists: bool
+    schedules: list[QueueScheduleWithNextSlots]
+
+
+class QueueSlotsResponse(RootModel[QueueScheduleResponse | QueueSchedulesResponse]):
+    root: Annotated[
+        QueueScheduleResponse | QueueSchedulesResponse,
+        Field(
+            description='A single schedule, or every schedule on the profile when `all=true`.'
+        ),
+    ]
+
+
+class QueueCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    profileId: Annotated[str, Field(description='Profile the queue belongs to.')]
+    name: Annotated[str | None, Field(max_length=100, min_length=1)] = 'Default Queue'
+    description: Annotated[str | None, Field(max_length=500)] = None
+    timezone: Annotated[
+        str,
+        Field(
+            description='IANA timezone. Rejected if unknown — queues never silently fall back to UTC.'
+        ),
+    ]
+    slots: Annotated[
+        list[QueueSlot],
+        Field(
+            description='Weekly slots. May be empty; a queue with no slots accepts no queued posts until slots are added.',
+            max_length=56,
+        ),
+    ]
+    active: bool | None = True
+    setAsDefault: Annotated[
+        bool | None,
+        Field(
+            description="Make this the profile's default queue. The first queue on a profile becomes default regardless."
+        ),
+    ] = None
+
+
+class QueueUpdateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    profileId: Annotated[str, Field(description='Profile that owns the queue.')]
+    queueId: Annotated[
+        str | None,
+        Field(description="Queue to update. Defaults to the profile's default queue."),
+    ] = None
+    name: Annotated[str | None, Field(max_length=100, min_length=1)] = None
+    description: Annotated[
+        str | None,
+        Field(
+            description='Send an empty string to clear the description.', max_length=500
+        ),
+    ] = None
+    timezone: str
+    slots: Annotated[
+        list[QueueSlot],
+        Field(description="Replaces the queue's slots entirely.", max_length=56),
+    ]
+    active: bool | None = None
+    setAsDefault: bool | None = None
+    reshuffleExisting: Annotated[
+        bool | None,
+        Field(
+            description="Re-place the queue's future scheduled posts onto the new schedule. Only applies when the timezone or slots actually changed."
+        ),
+    ] = None
+
+
+class QueueWriteResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    success: bool
+    schedule: QueueSchedule
+    nextSlots: list[datetime]
+
+
+class QueueUpdateResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    success: bool
+    schedule: QueueSchedule
+    nextSlots: list[datetime]
+    reshuffledCount: Annotated[
+        int,
+        Field(
+            description='How many scheduled posts were moved onto the new schedule.',
+            ge=0,
+        ),
+    ]
+
+
+class QueueDeleteResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    success: bool
+    deleted: bool
+    deletedCount: Annotated[
+        int,
+        Field(
+            description='How many schedules were deleted. Always 1 when `queueId` is supplied; when it is omitted every schedule on the profile is deleted and this is that count.',
+            ge=1,
+        ),
+    ]
+
+
+class QueueNextSlotResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    profileId: str
+    nextSlot: Annotated[
+        datetime | None,
+        Field(description='Null when every slot in the next year is already taken.'),
+    ]
+    timezone: str
+    queueId: str
+    queueName: str
+
+
+class QueuePreviewResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    profileId: str
+    count: Annotated[
+        int,
+        Field(
+            description='Number of slots returned, which can be fewer than requested.',
+            ge=0,
+        ),
+    ]
+    slots: list[datetime]
+
+
+class CommentAutomation(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: Annotated[
+        str,
+        Field(description='Connected Instagram account id. Immutable after creation.'),
+    ]
+    profileId: Annotated[
+        str, Field(description='If supplied, must equal the account profile.')
+    ]
+    name: Annotated[
+        str, Field(description='Trimmed name.', max_length=120, min_length=1)
+    ]
+    trigger: Literal['comment', 'story_reply']
+    platformPostId: Annotated[
+        str | None,
+        Field(
+            description='Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching.'
+        ),
+    ] = None
+    postId: Annotated[
+        str | None,
+        Field(
+            description='Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId.'
+        ),
+    ] = None
+    postTitle: Annotated[str | None, Field(max_length=200)] = None
+    keywords: Annotated[
+        list[Keyword],
+        Field(
+            description='Trimmed and deduplicated case-insensitively. Empty matches every comment.',
+            max_length=50,
+        ),
+    ]
+    matchMode: Literal['exact', 'contains', 'word']
+    excludeKeywords: Annotated[
+        list[ExcludeKeyword],
+        Field(
+            description='Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively.',
+            max_length=50,
+        ),
+    ]
+    typoTolerance: Annotated[
+        bool,
+        Field(
+            description='word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4.'
+        ),
+    ]
+    dmMessage: Annotated[
+        str,
+        Field(
+            description='Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ]
+    dmMessageVariations: Annotated[
+        list[DmMessageVariation],
+        Field(
+            description='Same limits as dmMessage. Uniform random choice from the base message and variations.',
+            max_length=5,
+        ),
+    ]
+    buttons: Annotated[list[CommentAutomationButton], Field(max_length=3)]
+    commentReply: Annotated[
+        str | None,
+        Field(
+            description='Optional public reply, sent only after successful comment DM. Ignored for story_reply.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ] = None
+    commentReplyVariations: Annotated[
+        list[CommentReplyVariation],
+        Field(description='Uniform random choice independent of the DM.', max_length=5),
+    ]
+    dmDelaySeconds: Annotated[int, Field(ge=0, le=86400)]
+    commentReplyDelaySeconds: Annotated[
+        int,
+        Field(
+            description='Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds).',
+            ge=0,
+            le=86400,
+        ),
+    ]
+    isActive: bool
+    linkTracking: Literal[False]
+    id: str
+    platform: Literal['instagram']
+    alsoMatchInDms: Literal[False]
+    stats: Stats
+    createdAt: datetime
+    updatedAt: datetime
+
+
+class CommentAutomationListResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    automations: list[CommentAutomation]
+
+
+class CommentAutomationResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: str
+    automation: CommentAutomation
+
+
+class CommentAutomationDetailResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    automation: CommentAutomation
+    logs: Annotated[list[CommentAutomationLog], Field(max_length=20)]
+
+
 class PinterestDefaultBoardResponse(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -1303,7 +2957,7 @@ class AnalyticsListResponse(BaseModel):
             description="One entry per PostZen post, not per platform target. A post published to several platforms appears once, with one `platformAnalytics` entry per platform and `analytics` summed across them; `platform` is that post's only platform when it has one. Posts imported from a platform always appear on their own. `pagination.total` and `overview.totalPosts` count these grouped entries."
         ),
     ]
-    pagination: Pagination
+    pagination: PaginationModel
     overview: AnalyticsOverview
     truncated: Annotated[
         bool,
@@ -1391,6 +3045,12 @@ class ApiPost(BaseModel):
     content: str
     status: str
     scheduledFor: datetime | None
+    queueId: Annotated[
+        str | None,
+        Field(
+            description='Queue that placed this post, or null when the post was not queued.'
+        ),
+    ] = None
     timezone: str
     platforms: list[ApiPostPlatformResult]
 
@@ -1408,6 +3068,15 @@ class CreatePostResponse(BaseModel):
     ]
 
 
+class UpdatePostResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    post: ApiPost
+    message: str
+
+
 class CreatePostReplayResponse(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -1423,7 +3092,7 @@ class PostsListResponse(BaseModel):
         populate_by_name=True,
     )
     posts: list[ApiPost]
-    pagination: Pagination
+    pagination: PaginationModel
 
 
 class CreatePostRequest(BaseModel):
@@ -1464,5 +3133,25 @@ class CreatePostRequest(BaseModel):
         bool | None,
         Field(description='Create a draft. `platforms` is optional for drafts.'),
     ] = None
-    timezone: str | None = 'UTC'
+    queuedFromProfile: Annotated[
+        str | None,
+        Field(
+            description='Profile id whose queue places the post. PostZen assigns the next free slot and returns it as `scheduledFor`. Do not call `GET /v1/queue/next-slot` and pass the result as `scheduledFor`: the slot is only claimed by the create call itself, so a fetched slot can be taken by another request before yours arrives, and the post would be scheduled outside the queue.'
+        ),
+    ] = None
+    queueId: Annotated[
+        str | None,
+        Field(
+            description="Specific queue on `queuedFromProfile`. Defaults to that profile's default queue. Requires `queuedFromProfile`."
+        ),
+    ] = None
+    timezone: Annotated[
+        str | None,
+        Field(
+            description="Ignored in queue mode; queued posts take the queue's timezone."
+        ),
+    ] = 'UTC'
     tags: list[str] | None = None
+
+
+InboxComment.model_rebuild()

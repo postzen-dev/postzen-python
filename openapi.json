@@ -3,7 +3,7 @@
 	"info": {
 		"title": "PostZen Public API",
 		"version": "1.0.0",
-		"description": "The PostZen Public API lets server-side integrations manage profiles, connected social accounts, OAuth connection flows, media uploads, and post creation."
+		"description": "The PostZen Public API lets server-side integrations manage profiles, connected social accounts, OAuth connection flows, media uploads, post creation, and outbound webhooks."
 	},
 	"servers": [
 		{
@@ -31,11 +31,23 @@
 		},
 		{
 			"name": "Media",
-			"description": "Create presigned upload URLs for PostZen-hosted media."
+			"description": "Create presigned upload URLs for PostZen-hosted media, or upload a small file directly."
 		},
 		{
 			"name": "Posts",
 			"description": "Create drafts, scheduled posts, or immediate posts, and read LinkedIn comments and reactions on published organization posts."
+		},
+		{
+			"name": "Inbox",
+			"description": "Read and moderate comments on Instagram, Facebook, and Threads posts. Every endpoint takes the connected account as `accountId` and identifies the post either by its PostZen post id or by the platform's own post/media id. Reads also refresh PostZen's stored copy of the thread. An account on any other platform returns `400 platformUnsupported`, and the write endpoints need the account's comment-management scope — reconnect the account when they answer `403 platformCapabilityMissing`. The conversation endpoints cover Instagram direct messages instead: they read PostZen’s synced copy of each thread, refresh it from the platform as a side effect, and keep read state and archive state locally because Meta exposes neither. Sending is bounded by Meta’s 24-hour reply window, which surfaces as `400 PLATFORM_LIMITATION`."
+		},
+		{
+			"name": "Comment Automations",
+			"description": "Instagram comment and story reply automations with private replies and delivery logs."
+		},
+		{
+			"name": "Queues",
+			"description": "Manage per-profile posting queues. A queue is a named weekly schedule (`slots` of `{ dayOfWeek, time }`) evaluated in the queue's own timezone. A profile may hold several queues and exactly one is the default. Creating a post with `queuedFromProfile` claims the next free slot inside a single transaction, which is what keeps concurrent creates from landing on the same instant."
 		},
 		{
 			"name": "Analytics",
@@ -45,6 +57,10 @@
 			"name": "API Keys",
 			"x-displayName": "API Keys",
 			"description": "Manage PostZen API keys programmatically. Creating and deleting keys requires a read-write key with full profile access."
+		},
+		{
+			"name": "Webhooks",
+			"description": "Manage outbound webhook endpoints and retained delivery logs. PostZen sends an at-least-once JSON envelope `{ id, type, apiVersion, createdAt, data }` using `POST`; automatic retries and manual redeliveries keep the same event id and raw body. Requests include `X-PostZen-Event`, `X-PostZen-Event-Id`, `X-PostZen-Delivery-Id`, and `X-PostZen-Timestamp`. When a signing secret is configured, `X-PostZen-Signature` is `v1=<hex digest>` where the digest is HMAC-SHA256 over `<timestamp>.<raw request body>`. Production receivers should configure signing, compare signatures in constant time, reject timestamps older than five minutes, and deduplicate by event id."
 		}
 	],
 	"paths": {
@@ -1239,6 +1255,165 @@
 				}
 			}
 		},
+		"/v1/media/upload-direct": {
+			"post": {
+				"tags": [
+					"Media"
+				],
+				"operationId": "uploadMediaDirect",
+				"summary": "Upload a file directly",
+				"description": "Uploads a file in the request itself and returns a public URL, for cases where a two-step presign is inconvenient and the file is small — chiefly direct message attachments, where Meta fetches the URL itself. The stored object is deleted automatically after seven days, so it is not a substitute for `POST /v1/media/presign` when publishing posts. Maximum 25MB. Requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"multipart/form-data": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"file"
+								],
+								"properties": {
+									"file": {
+										"type": "string",
+										"format": "binary",
+										"description": "The file bytes. Image, video, audio, or PDF, up to 25MB."
+									},
+									"contentType": {
+										"type": "string",
+										"description": "MIME type override, for clients that cannot set the part's own Content-Type."
+									}
+								}
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "File stored.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MediaDirectUploadResponse"
+								},
+								"example": {
+									"url": "https://media.postzen.dev/direct-uploads/0001787068800000-6f0d0296-6a1c-4d5b-9a2e-3f8c1b7d4e90/receipt.jpg",
+									"filename": "receipt.jpg",
+									"contentType": "image/jpeg",
+									"size": 184320
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/posts/bulk-upload": {
+			"post": {
+				"tags": [
+					"Posts"
+				],
+				"operationId": "bulkUploadPosts",
+				"summary": "Bulk upload posts from CSV",
+				"description": "Validates and creates up to 500 posts from a CSV file. This endpoint requires a read-write API key. Each data row targets every connected account for the selected platforms on one profile. Set `dryRun=true` to validate without checking the Free plan's monthly post allowance, ingesting media, or writing data. A non-dry-run upload is rejected with HTTP 402 before creating any rows if its publishable targets would exceed that allowance. A mixed success/failure response uses HTTP 207; all-success and all-failure responses use HTTP 200.\n\n| CSV column | Purpose |\n| --- | --- |\n| `post_content` | Required base post text. |\n| `platforms` | Required comma-separated platforms: `instagram`, `facebook`, `threads`, `tiktok`, `linkedin`, `x`, `youtube`, `pinterest`, `bluesky`, or `telegram`; `twitter` aliases `x`. |\n| `profiles` | Required single profile id or unique profile name. |\n| `schedule_time` | Required column. Use `YYYY-MM-DD HH:mm[:ss]` in `tz`, or ISO 8601 with an explicit offset. May be empty for draft, publish-now, or queue rows. |\n| `tz` | IANA timezone; defaults to `UTC`. |\n| `media_urls` | Comma-separated HTTP(S) URLs, up to 10 per row and 50 distinct URLs per upload. |\n| `is_draft`, `publish_now`, `use_queue` | Mutually exclusive boolean mode flags. With none set, the row is scheduled. |\n| `title`, `tags`, `hashtags`, `mentions`, `visibility` | General title, comma-separated tags, appended hashtags/mentions, and YouTube visibility. |\n| `custom_content_<platform>` | Platform-specific content override; `custom_content_twitter` targets X. |\n| `youtube_title`, `youtube_description` | YouTube title and description override. |\n| `facebook_first_comment`, `linkedin_first_comment` | First comments. |\n| `instagram_content_type`, `instagram_collaborators`, `instagram_first_comment` | Instagram post type, collaborators, and first comment. |\n| `tiktok_privacy`, `tiktok_allow_comments`, `tiktok_allow_duet`, `tiktok_allow_stitch`, `tiktok_brand_partner`, `tiktok_organic_brand`, `tiktok_draft`, `tiktok_description` | TikTok publishing options. |\n| `telegram_parse_mode`, `telegram_disable_web_page_preview`, `telegram_disable_notification`, `telegram_protect_content` | Telegram publishing options. |\n| `pinterest_title`, `pinterest_link`, `pinterest_board_id`, `pinterest_cover_image_url`, `pinterest_cover_image_key_frame_time` | Pinterest pin options, including alternative video cover selections. |",
+				"parameters": [
+					{
+						"name": "dryRun",
+						"in": "query",
+						"description": "Validate every row without checking the monthly post allowance, ingesting media, or creating posts.",
+						"schema": {
+							"type": "boolean",
+							"default": false
+						}
+					},
+					{
+						"name": "x-request-id",
+						"in": "header",
+						"description": "Optional upload idempotency key. Each row derives the stable key `bulk-api:{x-request-id}:{1-based row index}`.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"multipart/form-data": {
+							"schema": {
+								"type": "object",
+								"required": [
+									"file"
+								],
+								"properties": {
+									"file": {
+										"type": "string",
+										"format": "binary",
+										"description": "UTF-8 CSV file, maximum 2 MiB."
+									}
+								}
+							}
+						},
+						"text/csv": {
+							"schema": {
+								"type": "string",
+								"description": "Raw UTF-8 CSV body, maximum 2 MiB."
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Every row succeeded, or every row failed validation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/BulkUploadResult"
+								}
+							}
+						}
+					},
+					"207": {
+						"description": "The upload contains both successful and failed rows.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/BulkUploadResult"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"$ref": "#/components/responses/PaymentRequired"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					}
+				}
+			}
+		},
 		"/v1/posts": {
 			"get": {
 				"tags": [
@@ -1505,11 +1680,165 @@
 					"401": {
 						"$ref": "#/components/responses/Unauthorized"
 					},
+					"402": {
+						"$ref": "#/components/responses/PaymentRequired"
+					},
 					"403": {
 						"$ref": "#/components/responses/Forbidden"
 					},
 					"500": {
 						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/posts/{postId}": {
+			"parameters": [
+				{
+					"name": "postId",
+					"in": "path",
+					"required": true,
+					"description": "PostZen post id.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Posts"
+				],
+				"operationId": "getPost",
+				"summary": "Get a post",
+				"description": "Returns one post when it belongs to a profile available to the API key. Missing and inaccessible posts both return 404.",
+				"responses": {
+					"200": {
+						"description": "Post returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"post"
+									],
+									"properties": {
+										"post": {
+											"$ref": "#/components/schemas/ApiPost"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					}
+				}
+			},
+			"put": {
+				"tags": [
+					"Posts"
+				],
+				"operationId": "updatePost",
+				"summary": "Update a post",
+				"description": "Updates an editable post. Every body field is optional; omitted fields keep their current values, and omitting all timing fields keeps the current scheduling and draft status. At most one of `publishNow`, `scheduledFor`, `isDraft`, or `queuedFromProfile` may select a new timing mode.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CreatePostRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Post updated.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/UpdatePostResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"402": {
+						"$ref": "#/components/responses/PaymentRequired"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"409": {
+						"$ref": "#/components/responses/Conflict"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Posts"
+				],
+				"operationId": "deletePost",
+				"summary": "Delete a post",
+				"description": "Deletes a draft, scheduled, queued, failed, partially failed, or canceled post. Published and publishing posts cannot be deleted.",
+				"responses": {
+					"200": {
+						"description": "Post deleted.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"message"
+									],
+									"properties": {
+										"message": {
+											"type": "string",
+											"const": "Post deleted successfully"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"409": {
+						"$ref": "#/components/responses/Conflict"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
 					}
 				}
 			}
@@ -1866,6 +2195,2303 @@
 								}
 							}
 						}
+					}
+				}
+			}
+		},
+		"/v1/inbox/comments/{postId}": {
+			"parameters": [
+				{
+					"name": "postId",
+					"in": "path",
+					"required": true,
+					"description": "Post the comments belong to. Accepts a PostZen post id — resolved to the id the post was published under for `accountId` — or the platform's own post/media id, which is the common case because the inbox covers every post the account has, not only the ones PostZen published. Instagram and Facebook also accept a comment id here.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "listInboxPostComments",
+				"summary": "List comments on a post",
+				"description": "Returns the comments the platform holds for one Instagram, Facebook, or Threads post, and refreshes PostZen's stored copy of the thread as a side effect. `replies` carries the first page of nested replies when the platform returns them cheaply — `repliesHasMore` says when it did not, and passing that comment's id as `commentId` pages through the rest. Instagram threads are only two levels deep, so a reply never carries replies of its own. Fields a platform does not report are absent rather than zero: Threads, for example, never reports per-reply like counts. Read-only and read-write API keys are accepted.",
+				"parameters": [
+					{
+						"name": "accountId",
+						"in": "query",
+						"required": true,
+						"description": "PostZen account id of the connected Instagram, Facebook, or Threads account that owns the post.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size. Platform page ceilings may return fewer.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 25
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"description": "Opaque pagination cursor. Pass `pagination.cursor` from the previous response to fetch the next page.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "commentId",
+						"in": "query",
+						"description": "Return the replies to this comment instead of the post's own comments.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Comments returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxCommentsResponse"
+								},
+								"example": {
+									"status": "success",
+									"comments": [
+										{
+											"id": "17912345678901234",
+											"message": "Love this one!",
+											"createdTime": "2026-08-17T14:22:08.000Z",
+											"from": {
+												"id": "17841400000000000",
+												"name": "Jane Doe",
+												"username": "janedoe",
+												"isOwner": false
+											},
+											"likeCount": 3,
+											"replyCount": 1,
+											"platform": "instagram",
+											"url": "https://www.instagram.com/p/CxYzAbCdEfG/c/17912345678901234/",
+											"replies": [
+												{
+													"id": "17912345678901299",
+													"message": "Thank you!",
+													"createdTime": "2026-08-17T14:41:52.000Z",
+													"from": {
+														"id": "17841411111111111",
+														"username": "postzenhq",
+														"isOwner": true
+													},
+													"platform": "instagram",
+													"replies": [],
+													"repliesHasMore": false,
+													"canReply": true,
+													"canDelete": true,
+													"canHide": true,
+													"isHidden": false,
+													"parentId": "17912345678901234"
+												}
+											],
+											"repliesHasMore": false,
+											"canReply": true,
+											"canDelete": true,
+											"canHide": true,
+											"isHidden": false,
+											"parentId": null
+										}
+									],
+									"pagination": {
+										"hasMore": true,
+										"cursor": "QVFIUkxsdGx..."
+									},
+									"meta": {
+										"platform": "instagram",
+										"postId": "17895695668004550",
+										"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+										"lastUpdated": "2026-08-18T09:15:00.000Z"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform the inbox supports (`platformUnsupported`). A platform-rejected identifier or parameter also lands here, with `platformError` carrying the platform's wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "The inbox supports Instagram, Facebook and Threads accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The account is outside the API key's profile access (`forbidden`), or the platform refused the token because the connection lacks the scope this read needs (`platformCapabilityMissing`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its comments.",
+									"code": "platformCapabilityMissing",
+									"platform": "facebook"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`), no such post for that account (`postNotFound`), the PostZen post has not published to this account yet (`postNotPublished`), or the platform reported the comment as missing.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "That post could not be found.",
+									"code": "postNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The account's connection is dead and must be reauthorized before its comments can be read or written.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its comments can be read.",
+									"code": "connectionDead",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "The platform rate limited the upstream request; `platformError` carries its wording and `Retry-After` gives the wait in seconds. PostZen's own per-key and per-operation limiters also return `429`, with the plain body `{\"error\":\"rate_limited\",\"retryAfter\":<seconds>}`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "(#4) Application request limit reached",
+									"code": "4",
+									"platform": "instagram",
+									"platformError": "(#4) Application request limit reached"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"502": {
+						"description": "The platform could not answer the request. `platformError` carries its wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Unsupported get request.",
+									"code": "100",
+									"platform": "facebook",
+									"platformError": "Unsupported get request."
+								}
+							}
+						}
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "replyToInboxPost",
+				"summary": "Comment on a post or reply to a comment",
+				"description": "Publishes a comment on the post, or a reply to `commentId` when one is given. Requires a read-write API key and the account's comment-management scope; without the scope the call answers `403 platformCapabilityMissing` and nothing is sent to the platform. `attachmentUrl` is Facebook only — every other platform rejects it with `400 attachmentUnsupported`. Instagram is two levels deep, so replying to a reply is redirected to that reply's top-level parent. A Threads reply is created as a container and then published; when the publish is still pending after PostZen's internal retries the call returns `502 publishPending` and the reply may still appear on its own, so check the thread before retrying rather than posting twice.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/InboxReplyRequest"
+							},
+							"example": {
+								"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+								"message": "Thank you!",
+								"commentId": "17912345678901234"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Comment published.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxReplyResponse"
+								},
+								"example": {
+									"success": true,
+									"data": {
+										"commentId": "17912345678901299",
+										"isReply": true
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — the account is not on a platform the inbox supports (`platformUnsupported`), or `attachmentUrl` was sent for a platform other than Facebook (`attachmentUnsupported`). A platform-rejected identifier or parameter also lands here, with `platformError` carrying the platform's wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "attachmentUrl is supported for Facebook comments only.",
+									"code": "attachmentUnsupported",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The API key is read-only, the account is outside its profile access (`forbidden`), or the connection is missing the account's comment-management scope (`platformCapabilityMissing`) — nothing is sent to the platform in that case.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its comments.",
+									"code": "platformCapabilityMissing",
+									"platform": "facebook"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`), no such post for that account (`postNotFound`), the PostZen post has not published to this account yet (`postNotPublished`), or the platform reported the comment as missing.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "That post could not be found.",
+									"code": "postNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The account's connection is dead and must be reauthorized before its comments can be read or written.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its comments can be read.",
+									"code": "connectionDead",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "The platform rate limited the upstream request; `platformError` carries its wording and `Retry-After` gives the wait in seconds. PostZen's own per-key and per-operation limiters also return `429`, with the plain body `{\"error\":\"rate_limited\",\"retryAfter\":<seconds>}`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "(#4) Application request limit reached",
+									"code": "4",
+									"platform": "instagram",
+									"platformError": "(#4) Application request limit reached"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"502": {
+						"description": "The platform could not answer the request. `platformError` carries its wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Unsupported get request.",
+									"code": "100",
+									"platform": "facebook",
+									"platformError": "Unsupported get request."
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "deleteInboxComment",
+				"summary": "Delete a comment",
+				"description": "Deletes a comment. Requires a read-write API key and the account's comment-management scope. `canDelete` on the comment says whether the platform allows it: Facebook reports it per comment, and Threads only allows deleting replies the connected account itself wrote.",
+				"parameters": [
+					{
+						"name": "accountId",
+						"in": "query",
+						"required": true,
+						"description": "PostZen account id of the connected Instagram, Facebook, or Threads account that owns the post.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "commentId",
+						"in": "query",
+						"required": true,
+						"description": "Platform id of the comment to delete.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Comment deleted.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxActionResponse"
+								},
+								"example": {
+									"success": true,
+									"data": {
+										"message": "Comment deleted"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform the inbox supports (`platformUnsupported`). A platform-rejected identifier or parameter also lands here, with `platformError` carrying the platform's wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "The inbox supports Instagram, Facebook and Threads accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The API key is read-only, the account is outside its profile access (`forbidden`), or the connection is missing the account's comment-management scope (`platformCapabilityMissing`) — nothing is sent to the platform in that case.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its comments.",
+									"code": "platformCapabilityMissing",
+									"platform": "facebook"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`), no such post for that account (`postNotFound`), the PostZen post has not published to this account yet (`postNotPublished`), or the platform reported the comment as missing.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "That post could not be found.",
+									"code": "postNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The account's connection is dead and must be reauthorized before its comments can be read or written.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its comments can be read.",
+									"code": "connectionDead",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "The platform rate limited the upstream request; `platformError` carries its wording and `Retry-After` gives the wait in seconds. PostZen's own per-key and per-operation limiters also return `429`, with the plain body `{\"error\":\"rate_limited\",\"retryAfter\":<seconds>}`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "(#4) Application request limit reached",
+									"code": "4",
+									"platform": "instagram",
+									"platformError": "(#4) Application request limit reached"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"502": {
+						"description": "The platform could not answer the request. `platformError` carries its wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Unsupported get request.",
+									"code": "100",
+									"platform": "facebook",
+									"platformError": "Unsupported get request."
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/inbox/comments/{postId}/{commentId}/hide": {
+			"parameters": [
+				{
+					"name": "postId",
+					"in": "path",
+					"required": true,
+					"description": "Post the comments belong to. Accepts a PostZen post id — resolved to the id the post was published under for `accountId` — or the platform's own post/media id, which is the common case because the inbox covers every post the account has, not only the ones PostZen published. Instagram and Facebook also accept a comment id here.",
+					"schema": {
+						"type": "string"
+					}
+				},
+				{
+					"name": "commentId",
+					"in": "path",
+					"required": true,
+					"description": "Platform id of the comment to hide or unhide.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"post": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "hideInboxComment",
+				"summary": "Hide a comment",
+				"description": "Hides a comment so only its author still sees it. Requires a read-write API key and the account's comment-management scope. `canHide` on the comment says whether the platform allows it: Facebook reports it per comment, and Threads only supports hiding top-level replies on the connected account's own posts — hiding one there also hides the replies beneath it.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/InboxHideRequest"
+							},
+							"example": {
+								"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Comment hidden.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxHideResponse"
+								},
+								"example": {
+									"status": "success",
+									"commentId": "17912345678901234",
+									"hidden": true,
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform the inbox supports (`platformUnsupported`). A platform-rejected identifier or parameter also lands here, with `platformError` carrying the platform's wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "The inbox supports Instagram, Facebook and Threads accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The API key is read-only, the account is outside its profile access (`forbidden`), or the connection is missing the account's comment-management scope (`platformCapabilityMissing`) — nothing is sent to the platform in that case.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its comments.",
+									"code": "platformCapabilityMissing",
+									"platform": "facebook"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`), no such post for that account (`postNotFound`), the PostZen post has not published to this account yet (`postNotPublished`), or the platform reported the comment as missing.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "That post could not be found.",
+									"code": "postNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The account's connection is dead and must be reauthorized before its comments can be read or written.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its comments can be read.",
+									"code": "connectionDead",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "The platform rate limited the upstream request; `platformError` carries its wording and `Retry-After` gives the wait in seconds. PostZen's own per-key and per-operation limiters also return `429`, with the plain body `{\"error\":\"rate_limited\",\"retryAfter\":<seconds>}`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "(#4) Application request limit reached",
+									"code": "4",
+									"platform": "instagram",
+									"platformError": "(#4) Application request limit reached"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"502": {
+						"description": "The platform could not answer the request. `platformError` carries its wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Unsupported get request.",
+									"code": "100",
+									"platform": "facebook",
+									"platformError": "Unsupported get request."
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "unhideInboxComment",
+				"summary": "Unhide a comment",
+				"description": "Restores a hidden comment. Requires a read-write API key and the account's comment-management scope. On Threads, unhiding a top-level reply also restores the replies beneath it.",
+				"parameters": [
+					{
+						"name": "accountId",
+						"in": "query",
+						"required": true,
+						"description": "PostZen account id of the connected Instagram, Facebook, or Threads account that owns the post.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Comment unhidden.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxHideResponse"
+								},
+								"example": {
+									"status": "success",
+									"commentId": "17912345678901234",
+									"hidden": false,
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform the inbox supports (`platformUnsupported`). A platform-rejected identifier or parameter also lands here, with `platformError` carrying the platform's wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "The inbox supports Instagram, Facebook and Threads accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The API key is read-only, the account is outside its profile access (`forbidden`), or the connection is missing the account's comment-management scope (`platformCapabilityMissing`) — nothing is sent to the platform in that case.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its comments.",
+									"code": "platformCapabilityMissing",
+									"platform": "facebook"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`), no such post for that account (`postNotFound`), the PostZen post has not published to this account yet (`postNotPublished`), or the platform reported the comment as missing.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "That post could not be found.",
+									"code": "postNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The account's connection is dead and must be reauthorized before its comments can be read or written.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its comments can be read.",
+									"code": "connectionDead",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"429": {
+						"description": "The platform rate limited the upstream request; `platformError` carries its wording and `Retry-After` gives the wait in seconds. PostZen's own per-key and per-operation limiters also return `429`, with the plain body `{\"error\":\"rate_limited\",\"retryAfter\":<seconds>}`.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "(#4) Application request limit reached",
+									"code": "4",
+									"platform": "instagram",
+									"platformError": "(#4) Application request limit reached"
+								}
+							}
+						}
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"502": {
+						"description": "The platform could not answer the request. `platformError` carries its wording.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxErrorResponse"
+								},
+								"example": {
+									"error": "Unsupported get request.",
+									"code": "100",
+									"platform": "facebook",
+									"platformError": "Unsupported get request."
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/inbox/conversations": {
+			"get": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "listInboxConversations",
+				"summary": "List direct message conversations",
+				"description": "Returns the Instagram direct message threads PostZen holds for the accounts this key can reach, newest activity first, and refreshes that stored copy from the platform as a side effect (throttled per account, so a tight polling loop costs nothing extra). `meta` reports which accounts could not be refreshed; their stored threads are still returned. Read-only and read-write API keys are accepted.",
+				"parameters": [
+					{
+						"name": "accountId",
+						"in": "query",
+						"description": "Restrict the read to one connected account. Omitted, every Instagram account the key can reach is queried.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "profileId",
+						"in": "query",
+						"description": "Restrict the read to accounts on one profile.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "platform",
+						"in": "query",
+						"description": "Restrict the read to one platform. Direct messages cover Instagram only; any other value is a validation error.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"instagram"
+							]
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"description": "Return only active or only archived threads. Archive state is PostZen-local.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"active",
+								"archived"
+							]
+						}
+					},
+					{
+						"name": "sortOrder",
+						"in": "query",
+						"description": "Order by `updatedTime`.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"asc",
+								"desc"
+							],
+							"default": "desc"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 50
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"description": "Opaque pagination cursor. Pass `pagination.nextCursor` from the previous response.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Conversations returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxConversationsResponse"
+								},
+								"example": {
+									"data": [
+										{
+											"id": "t_17845791234567890",
+											"platform": "instagram",
+											"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+											"accountUsername": "postzenhq",
+											"participantId": "17841400000000000",
+											"participantName": "Jane Doe",
+											"participantUsername": "janedoe",
+											"participantPicture": "https://scontent.cdninstagram.com/v/t51.2885-19/jane.jpg",
+											"lastMessage": "Is the sale still on?",
+											"lastMessageAt": "2026-08-18T16:04:11.000Z",
+											"updatedTime": "2026-08-18T16:04:11.000Z",
+											"status": "active",
+											"unreadCount": 2
+										}
+									],
+									"pagination": {
+										"hasMore": true,
+										"nextCursor": "eyJpZCI6ImsxN2Q4czlmMGExYjJjM2Q0ZTVmNmc3aDhpIn0"
+									},
+									"meta": {
+										"accountsQueried": 2,
+										"accountsFailed": 0,
+										"failedAccounts": [],
+										"lastUpdated": "2026-08-18T16:10:00.000Z"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform direct messages support (`platformUnsupported`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Direct messages support Instagram accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The account is outside the API key's profile access (`forbidden`), or the connection is missing the messaging scope this call needs (`platformCapabilityMissing`). Reconnect the account to grant it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its messages.",
+									"code": "platformCapabilityMissing",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`) or no such conversation for that account (`conversationNotFound`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "That conversation could not be found.",
+									"code": "conversationNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The connection needs to be reauthorized before its messages can be read (`connectionDead`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its messages can be read.",
+									"code": "connectionDead"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/inbox/conversations/search": {
+			"get": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "searchInboxConversations",
+				"summary": "Search direct message conversations",
+				"description": "Searches the conversations PostZen has already synced — Meta exposes no message search API, so this reads PostZen's own copy and refreshes it first. Message text matches whole tokens, case- and accent-insensitively (`cafe` finds `café`, `art` does not match `start`); participant names and usernames match on substring. Setting `direction` narrows the search to message text only, so a thread that matched only on the participant's name is excluded. Read-only and read-write API keys are accepted.",
+				"parameters": [
+					{
+						"name": "query",
+						"in": "query",
+						"required": true,
+						"description": "Search term.",
+						"schema": {
+							"type": "string",
+							"minLength": 2,
+							"maxLength": 200
+						}
+					},
+					{
+						"name": "direction",
+						"in": "query",
+						"description": "Match only messages the account received (`incoming`) or sent (`outgoing`). Restricts matching to message text.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"incoming",
+								"outgoing"
+							]
+						}
+					},
+					{
+						"name": "accountId",
+						"in": "query",
+						"description": "Restrict the read to one connected account. Omitted, every Instagram account the key can reach is queried.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "profileId",
+						"in": "query",
+						"description": "Restrict the read to accounts on one profile.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "platform",
+						"in": "query",
+						"description": "Restrict the read to one platform. Direct messages cover Instagram only; any other value is a validation error.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"instagram"
+							]
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 50,
+							"default": 20
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"description": "Pagination cursor from `pagination.nextCursor`. Unlike the list cursor this one is an offset into the result set, so it is only valid for the same query.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Matching conversations returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxConversationSearchResponse"
+								},
+								"example": {
+									"data": [
+										{
+											"conversation": {
+												"id": "t_17845791234567890",
+												"platform": "instagram",
+												"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+												"participantName": "Jane Doe",
+												"participantUsername": "janedoe",
+												"status": "active",
+												"lastMessage": "Is the sale still on?",
+												"lastMessageAt": "2026-08-18T16:04:11.000Z"
+											},
+											"matchCount": 2,
+											"matches": [
+												{
+													"id": "aWdfZGFtOm1zZ18x",
+													"text": "Is the sale still on?",
+													"direction": "incoming",
+													"timestamp": "2026-08-18T16:04:11.000Z"
+												},
+												{
+													"id": "aWdfZGFtOm1zZ18w",
+													"text": "The sale runs through Friday.",
+													"direction": "outgoing",
+													"timestamp": "2026-08-17T09:12:44.000Z"
+												}
+											]
+										}
+									],
+									"pagination": {
+										"hasMore": false,
+										"nextCursor": null
+									},
+									"meta": {
+										"accountsQueried": 2,
+										"accountsFailed": 0,
+										"failedAccounts": [],
+										"lastUpdated": "2026-08-18T16:10:00.000Z"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform direct messages support (`platformUnsupported`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Direct messages support Instagram accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The account is outside the API key's profile access (`forbidden`), or the connection is missing the messaging scope this call needs (`platformCapabilityMissing`). Reconnect the account to grant it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its messages.",
+									"code": "platformCapabilityMissing",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`) or no such conversation for that account (`conversationNotFound`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "That conversation could not be found.",
+									"code": "conversationNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The connection needs to be reauthorized before its messages can be read (`connectionDead`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its messages can be read.",
+									"code": "connectionDead"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/inbox/conversations/{conversationId}": {
+			"parameters": [
+				{
+					"name": "conversationId",
+					"in": "path",
+					"required": true,
+					"description": "The platform's own conversation (thread) id, as returned in `id` by the list and search endpoints — not a PostZen document id.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "getInboxConversation",
+				"summary": "Get a direct message conversation",
+				"description": "Returns one thread, refreshing PostZen’s stored copy from the platform first. Read-only and read-write API keys are accepted.",
+				"parameters": [
+					{
+						"name": "accountId",
+						"in": "query",
+						"required": true,
+						"description": "PostZen account id that owns the conversation.",
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Conversation returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxConversationResponse"
+								},
+								"example": {
+									"data": {
+										"id": "t_17845791234567890",
+										"platform": "instagram",
+										"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+										"accountUsername": "postzenhq",
+										"participantId": "17841400000000000",
+										"participantName": "Jane Doe",
+										"participantUsername": "janedoe",
+										"participantPicture": "https://scontent.cdninstagram.com/v/t51.2885-19/jane.jpg",
+										"lastMessage": "Is the sale still on?",
+										"lastMessageAt": "2026-08-18T16:04:11.000Z",
+										"updatedTime": "2026-08-18T16:04:11.000Z",
+										"status": "active",
+										"unreadCount": 2
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform direct messages support (`platformUnsupported`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Direct messages support Instagram accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The account is outside the API key's profile access (`forbidden`), or the connection is missing the messaging scope this call needs (`platformCapabilityMissing`). Reconnect the account to grant it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its messages.",
+									"code": "platformCapabilityMissing",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`) or no such conversation for that account (`conversationNotFound`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "That conversation could not be found.",
+									"code": "conversationNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The connection needs to be reauthorized before its messages can be read (`connectionDead`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its messages can be read.",
+									"code": "connectionDead"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"put": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "updateInboxConversation",
+				"summary": "Archive or unarchive a conversation",
+				"description": "Sets the thread’s status. This is PostZen-local state — Meta has no archive API, so nothing is sent to the platform and a later sync never overwrites it. Requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/InboxConversationUpdateRequest"
+							},
+							"example": {
+								"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+								"status": "archived"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Conversation updated.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxConversationUpdateResponse"
+								},
+								"example": {
+									"success": true,
+									"data": {
+										"id": "t_17845791234567890",
+										"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+										"status": "archived",
+										"platform": "instagram",
+										"updatedAt": "2026-08-18T16:12:03.000Z"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform direct messages support (`platformUnsupported`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Direct messages support Instagram accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The account is outside the API key's profile access (`forbidden`), or the connection is missing the messaging scope this call needs (`platformCapabilityMissing`). Reconnect the account to grant it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its messages.",
+									"code": "platformCapabilityMissing",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`) or no such conversation for that account (`conversationNotFound`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "That conversation could not be found.",
+									"code": "conversationNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The connection needs to be reauthorized before its messages can be read (`connectionDead`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its messages can be read.",
+									"code": "connectionDead"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/inbox/conversations/{conversationId}/read": {
+			"parameters": [
+				{
+					"name": "conversationId",
+					"in": "path",
+					"required": true,
+					"description": "The platform's own conversation (thread) id, as returned in `id` by the list and search endpoints — not a PostZen document id.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"post": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "markInboxConversationRead",
+				"summary": "Mark a conversation read",
+				"description": "Moves the thread’s local read watermark to its newest synced message and returns how many incoming messages crossed from unread to read. Nothing is sent to the platform, and reading messages never does this implicitly. Requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/InboxConversationReadRequest"
+							},
+							"example": {
+								"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Conversation marked read.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxConversationReadResponse"
+								},
+								"example": {
+									"success": true,
+									"markedCount": 2
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform direct messages support (`platformUnsupported`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Direct messages support Instagram accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The account is outside the API key's profile access (`forbidden`), or the connection is missing the messaging scope this call needs (`platformCapabilityMissing`). Reconnect the account to grant it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its messages.",
+									"code": "platformCapabilityMissing",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`) or no such conversation for that account (`conversationNotFound`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "That conversation could not be found.",
+									"code": "conversationNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The connection needs to be reauthorized before its messages can be read (`connectionDead`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its messages can be read.",
+									"code": "connectionDead"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/inbox/conversations/{conversationId}/messages": {
+			"parameters": [
+				{
+					"name": "conversationId",
+					"in": "path",
+					"required": true,
+					"description": "The platform's own conversation (thread) id, as returned in `id` by the list and search endpoints — not a PostZen document id.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "listInboxConversationMessages",
+				"summary": "List messages in a conversation",
+				"description": "Returns the messages PostZen holds for one thread, oldest first by default, refreshing them from the platform when the stored copy is stale. Strictly read-only: it never marks the thread read — use `POST /v1/inbox/conversations/{conversationId}/read` for that. Meta returns full content only for roughly the twenty newest Instagram messages, so older ones may carry an id and timestamp without text or attachments. Read-only and read-write API keys are accepted.",
+				"parameters": [
+					{
+						"name": "accountId",
+						"in": "query",
+						"required": true,
+						"description": "PostZen account id that owns the conversation.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 100
+						}
+					},
+					{
+						"name": "cursor",
+						"in": "query",
+						"description": "Opaque pagination cursor from `pagination.nextCursor`. A malformed cursor is a 400.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "sortOrder",
+						"in": "query",
+						"description": "Order by send time.",
+						"schema": {
+							"type": "string",
+							"enum": [
+								"asc",
+								"desc"
+							],
+							"default": "asc"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Messages returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxMessagesResponse"
+								},
+								"example": {
+									"status": "ok",
+									"pagination": {
+										"hasMore": false,
+										"nextCursor": null
+									},
+									"sortOrderApplied": "asc",
+									"messages": [
+										{
+											"id": "aWdfZGFtOm1zZ18w",
+											"conversationId": "t_17845791234567890",
+											"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+											"platform": "instagram",
+											"message": "The sale runs through Friday.",
+											"senderId": "17841411111111111",
+											"senderName": "postzenhq",
+											"direction": "outgoing",
+											"createdAt": "2026-08-17T09:12:44.000Z"
+										},
+										{
+											"id": "aWdfZGFtOm1zZ18x",
+											"conversationId": "t_17845791234567890",
+											"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+											"platform": "instagram",
+											"message": "Is the sale still on?",
+											"senderId": "17841400000000000",
+											"senderName": "Jane Doe",
+											"direction": "incoming",
+											"createdAt": "2026-08-18T16:04:11.000Z"
+										}
+									],
+									"lastUpdated": "2026-08-18T16:10:00.000Z"
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed — a plain `{ error }` body — or the account is not on a platform direct messages support (`platformUnsupported`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Direct messages support Instagram accounts only.",
+									"code": "platformUnsupported",
+									"platform": "tiktok"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The account is outside the API key's profile access (`forbidden`), or the connection is missing the messaging scope this call needs (`platformCapabilityMissing`). Reconnect the account to grant it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its messages.",
+									"code": "platformCapabilityMissing",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`) or no such conversation for that account (`conversationNotFound`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "That conversation could not be found.",
+									"code": "conversationNotFound"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The connection needs to be reauthorized before its messages can be read (`connectionDead`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its messages can be read.",
+									"code": "connectionDead"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Inbox"
+				],
+				"operationId": "sendInboxMessage",
+				"summary": "Send a direct message",
+				"description": "Sends a message into an existing thread. The recipient is the other participant on that thread, so no recipient id is needed. Exactly one of `message` or `attachmentUrl` may be sent per call — Meta's Send API carries one payload at a time, so combining them is a 400. Meta only accepts replies within 24 hours of the person's last message; outside that window the platform refuses the send and PostZen reports `400 PLATFORM_LIMITATION` with Meta's own envelope attached. Sends are hard-gated on the account's messaging scope. Requires a read-write API key.",
+				"parameters": [
+					{
+						"name": "Idempotency-Key",
+						"in": "header",
+						"description": "Replay protection. Retrying with the same key and the same body replays the stored outcome and sets `Idempotent-Replayed: true`; the same key with a different body is a 422, and a key whose first request is still in flight is a 409. A send whose outcome could not be confirmed (`502 providerOutcomeUnknown`) is stored as a terminal outcome, so retrying that key returns the same 502 rather than risking a duplicate message. Keys are retained for 24 hours.",
+						"schema": {
+							"type": "string",
+							"maxLength": 255
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/InboxMessageSendRequest"
+							},
+							"example": {
+								"accountId": "k17d8s9f0a1b2c3d4e5f6g7h8i",
+								"message": "Yes — the sale runs through Friday!"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Message sent. `Idempotent-Replayed: true` on the response means this was a replay of an earlier identical request rather than a new send.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxMessageSendResponse"
+								},
+								"example": {
+									"success": true,
+									"data": {
+										"messageId": "aWdfZGFtOm1zZ18y",
+										"conversationId": "t_17845791234567890",
+										"sentAt": "2026-08-18T16:14:52.000Z",
+										"message": "Yes — the sale runs through Friday!"
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"description": "A parameter is missing or malformed, `message` and `attachmentUrl` were combined, the account is not on a supported platform (`platformUnsupported`), or the platform refused a send it could accept at another time (`PLATFORM_LIMITATION`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "This message is sent outside of allowed window.",
+									"code": "PLATFORM_LIMITATION",
+									"platform": "instagram",
+									"platformError": {
+										"code": 10,
+										"subcode": 2534022,
+										"type": "OAuthException"
+									}
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"description": "The account is outside the API key's profile access (`forbidden`), or the connection is missing the messaging scope this call needs (`platformCapabilityMissing`). Reconnect the account to grant it.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Reconnect the account to grant PostZen access to its messages.",
+									"code": "platformCapabilityMissing",
+									"platform": "instagram"
+								}
+							}
+						}
+					},
+					"404": {
+						"description": "No such account (`accountNotFound`) or no such conversation for that account (`conversationNotFound`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "That conversation could not be found.",
+									"code": "conversationNotFound"
+								}
+							}
+						}
+					},
+					"409": {
+						"description": "A request with the same `Idempotency-Key` is still in flight (`idempotencyInFlight`). Retry once it settles.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "A request with that Idempotency-Key is still in flight.",
+									"code": "idempotencyInFlight"
+								}
+							}
+						}
+					},
+					"422": {
+						"description": "That `Idempotency-Key` was already used with a different request body (`idempotencyConflict`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "That Idempotency-Key was already used with a different request body.",
+									"code": "idempotencyConflict"
+								}
+							}
+						}
+					},
+					"424": {
+						"description": "The connection needs to be reauthorized before its messages can be read (`connectionDead`).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "This connection needs to be reauthorized before its messages can be read.",
+									"code": "connectionDead"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"502": {
+						"description": "The send request to Meta did not come back (timeout or transport fault), so PostZen cannot confirm whether the message was delivered (`providerOutcomeUnknown`). Check the conversation before sending again — retrying the same `Idempotency-Key` returns this same response rather than sending a second copy.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/InboxDmErrorResponse"
+								},
+								"example": {
+									"error": "Message delivery outcome unknown — do not retry with the same idempotency key. Check the conversation before sending again.",
+									"code": "providerOutcomeUnknown",
+									"platform": "instagram"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/queue/slots": {
+			"get": {
+				"tags": [
+					"Queues"
+				],
+				"operationId": "listQueueSlots",
+				"summary": "Get a queue schedule",
+				"description": "Returns the queue selected by `queueId`, or the profile's default queue when `queueId` is omitted. With `all=true` every queue on the profile is returned instead. `nextSlots` holds the next five instants the queue would hand out, already skipping occupied slots; a paused or slotless queue returns an empty array.",
+				"parameters": [
+					{
+						"name": "profileId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "Profile that owns the queue."
+					},
+					{
+						"name": "queueId",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						},
+						"description": "Specific queue. Defaults to the profile's default queue. Cannot be combined with `all=true`."
+					},
+					{
+						"name": "all",
+						"in": "query",
+						"schema": {
+							"type": "boolean"
+						},
+						"description": "Return every queue on the profile instead of a single schedule."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Queue schedule returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/QueueSlotsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Queues"
+				],
+				"operationId": "createQueueSlot",
+				"summary": "Create a queue",
+				"description": "Creates a posting queue on a profile. A profile may hold up to 10 queues, each with up to 56 slots. The first queue on a profile automatically becomes its default. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/QueueCreateRequest"
+							},
+							"example": {
+								"profileId": "k57a1p3q9w2y8b6d4f0g",
+								"name": "Morning Posts",
+								"timezone": "America/Edmonton",
+								"slots": [
+									{
+										"dayOfWeek": 1,
+										"time": "09:00"
+									},
+									{
+										"dayOfWeek": 3,
+										"time": "09:00"
+									}
+								],
+								"active": true
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Queue created.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/QueueWriteResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"409": {
+						"description": "The profile has reached its queue limit.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"put": {
+				"tags": [
+					"Queues"
+				],
+				"operationId": "updateQueueSlot",
+				"summary": "Update a queue",
+				"description": "Replaces a queue's timezone and slots, and optionally renames, pauses, or promotes it to default. With `reshuffleExisting: true` the queue's future scheduled posts are re-placed onto the new schedule in their existing order; posts that are already publishing, published, or failed are never moved, and at most 200 posts may move in one call. Validation and slot assignment both run before the first write, so a rejected update leaves the queue untouched. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/QueueUpdateRequest"
+							},
+							"example": {
+								"profileId": "k57a1p3q9w2y8b6d4f0g",
+								"timezone": "America/Edmonton",
+								"slots": [
+									{
+										"dayOfWeek": 1,
+										"time": "08:30"
+									}
+								],
+								"reshuffleExisting": true
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Queue updated.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/QueueUpdateResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Queues"
+				],
+				"operationId": "deleteQueueSlot",
+				"summary": "Delete a queue",
+				"description": "Deletes the queue named by `queueId`, or every queue on the profile when `queueId` is omitted. Posts already placed by the queue keep their scheduled times; only the queue link is removed. Deleting the default queue promotes the profile's oldest remaining queue. This endpoint requires a read-write API key.",
+				"parameters": [
+					{
+						"name": "profileId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "Profile that owns the queue."
+					},
+					{
+						"name": "queueId",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						},
+						"description": "Queue to delete. Omit to delete every queue on the profile."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Queue deleted.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/QueueDeleteResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/queue/next-slot": {
+			"get": {
+				"tags": [
+					"Queues"
+				],
+				"operationId": "getNextQueueSlot",
+				"summary": "Get the next queue slot",
+				"description": "Returns the next free instant the queue would hand out. This is a preview only — the slot is not reserved. Create queued posts with `queuedFromProfile` rather than passing this value back as `scheduledFor`, or a concurrent create can take the slot first.",
+				"parameters": [
+					{
+						"name": "profileId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "Profile that owns the queue."
+					},
+					{
+						"name": "queueId",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						},
+						"description": "Specific queue. Defaults to the profile's default queue."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Next slot returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/QueueNextSlotResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"409": {
+						"description": "The queue is paused or has no slots.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/queue/preview": {
+			"get": {
+				"tags": [
+					"Queues"
+				],
+				"operationId": "previewQueue",
+				"summary": "Preview upcoming queue slots",
+				"description": "Returns the next `count` instants the queue would hand out, in ascending order. Occupied slots are skipped, so the preview matches what the next posts would actually receive. Previewing reserves nothing.",
+				"parameters": [
+					{
+						"name": "profileId",
+						"in": "query",
+						"required": true,
+						"schema": {
+							"type": "string"
+						},
+						"description": "Profile that owns the queue."
+					},
+					{
+						"name": "queueId",
+						"in": "query",
+						"schema": {
+							"type": "string"
+						},
+						"description": "Specific queue. Defaults to the profile's default queue."
+					},
+					{
+						"name": "count",
+						"in": "query",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 20
+						},
+						"description": "How many upcoming slots to return."
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Upcoming slots returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/QueuePreviewResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"409": {
+						"description": "The queue is paused or has no slots.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
 					}
 				}
 			}
@@ -2730,6 +5356,832 @@
 					}
 				}
 			}
+		},
+		"/v1/comment-automations": {
+			"get": {
+				"tags": [
+					"Comment Automations"
+				],
+				"operationId": "listCommentAutomations",
+				"summary": "List comment automations",
+				"description": "Returns visible automations newest first, maximum 100. Reads use the plan per-minute limit. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"parameters": [
+					{
+						"name": "profileId",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "accountId",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "List comment automations.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CommentAutomationListResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Comment Automations"
+				],
+				"operationId": "createCommentAutomation",
+				"summary": "Create a comment automation",
+				"description": "Requires read_write. Limited to 60 creates per hour per user. Per-post automations take priority over account-wide automations. One matching automation wins, and each contact receives at most one pending or successful send per automation and source. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CommentAutomationCreateRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Create a comment automation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CommentAutomationResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"409": {
+						"description": "limitReached (100 per user) or duplicatePostAutomation (an active per-post automation already exists).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/comment-automations/{automationId}": {
+			"get": {
+				"tags": [
+					"Comment Automations"
+				],
+				"operationId": "getCommentAutomation",
+				"summary": "Get a comment automation",
+				"description": "Returns the automation and 20 newest logs. Out-of-scope ids return 404 automationNotFound. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"parameters": [
+					{
+						"name": "automationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Get a comment automation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CommentAutomationDetailResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"patch": {
+				"tags": [
+					"Comment Automations"
+				],
+				"operationId": "updateCommentAutomation",
+				"summary": "Update a comment automation",
+				"description": "Requires read_write. Limited to 120 updates per hour per user. Inactive automations are not evaluated; pending deliveries are skipped when disabled. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"parameters": [
+					{
+						"name": "automationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/CommentAutomationUpdateRequest"
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Update a comment automation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CommentAutomationResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"409": {
+						"description": "limitReached (100 per user) or duplicatePostAutomation (an active per-post automation already exists).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Comment Automations"
+				],
+				"operationId": "deleteCommentAutomation",
+				"summary": "Delete a comment automation",
+				"description": "Requires read_write. Limited to 60 deletes per hour per user. Deletes the automation and its logs in batches. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"parameters": [
+					{
+						"name": "automationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Delete a comment automation.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"required": [
+										"message"
+									],
+									"properties": {
+										"message": {
+											"type": "string"
+										}
+									}
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"409": {
+						"description": "limitReached (100 per user) or duplicatePostAutomation (an active per-post automation already exists).",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/comment-automations/{automationId}/logs": {
+			"get": {
+				"tags": [
+					"Comment Automations"
+				],
+				"operationId": "listCommentAutomationLogs",
+				"summary": "List comment automation logs",
+				"description": "Newest logs first. total is capped at 5000 matching rows. Misses are not logged. Out-of-scope ids return 404 automationNotFound. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages.",
+				"parameters": [
+					{
+						"name": "automationId",
+						"in": "path",
+						"required": true,
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "string",
+							"enum": [
+								"pending",
+								"sent",
+								"failed",
+								"skipped"
+							]
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 200,
+							"default": 50
+						}
+					},
+					{
+						"name": "skip",
+						"in": "query",
+						"required": false,
+						"schema": {
+							"type": "integer",
+							"minimum": 0,
+							"default": 0
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "List comment automation logs.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/CommentAutomationLogsResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/webhooks": {
+			"get": {
+				"tags": [
+					"Webhooks"
+				],
+				"operationId": "listWebhooks",
+				"summary": "List webhooks",
+				"description": "Returns webhook endpoints visible to the API key, newest first. Secret and custom header values are never returned.",
+				"responses": {
+					"200": {
+						"description": "Webhooks returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WebhooksListResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"post": {
+				"tags": [
+					"Webhooks"
+				],
+				"operationId": "createWebhook",
+				"summary": "Create a webhook",
+				"description": "Creates an outbound webhook endpoint. A user may have up to 25 endpoints. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookCreateRequest"
+							},
+							"example": {
+								"name": "Production events",
+								"url": "https://example.com/webhooks/postzen",
+								"events": [
+									"post.published",
+									"post.failed"
+								],
+								"profileAccess": "all_profiles",
+								"secret": "customer-provided-secret"
+							}
+						}
+					}
+				},
+				"responses": {
+					"201": {
+						"description": "Webhook created.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WebhookWriteResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"409": {
+						"description": "The endpoint limit has been reached.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/webhooks/{webhookId}": {
+			"parameters": [
+				{
+					"name": "webhookId",
+					"in": "path",
+					"required": true,
+					"description": "PostZen webhook endpoint id.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"get": {
+				"tags": [
+					"Webhooks"
+				],
+				"operationId": "getWebhook",
+				"summary": "Get a webhook",
+				"description": "Returns one webhook endpoint visible to the API key without secret or custom header values.",
+				"responses": {
+					"200": {
+						"description": "Webhook returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WebhookResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"put": {
+				"tags": [
+					"Webhooks"
+				],
+				"operationId": "updateWebhook",
+				"summary": "Update a webhook",
+				"description": "Updates one or more endpoint settings. Omitted fields are unchanged. This endpoint requires a read-write API key.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookUpdateRequest"
+							},
+							"example": {
+								"events": [
+									"post.published",
+									"post.partially_failed",
+									"post.failed"
+								],
+								"customHeaders": []
+							}
+						}
+					}
+				},
+				"responses": {
+					"200": {
+						"description": "Webhook updated.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WebhookWriteResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			},
+			"delete": {
+				"tags": [
+					"Webhooks"
+				],
+				"operationId": "deleteWebhook",
+				"summary": "Delete a webhook",
+				"description": "Deletes an endpoint and stops new event fan-out. Retained delivery logs remain available until their retention period ends.",
+				"responses": {
+					"200": {
+						"description": "Webhook deleted.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/MessageResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/webhooks/{webhookId}/test": {
+			"parameters": [
+				{
+					"name": "webhookId",
+					"in": "path",
+					"required": true,
+					"description": "PostZen webhook endpoint id.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"post": {
+				"tags": [
+					"Webhooks"
+				],
+				"operationId": "testWebhook",
+				"summary": "Test a webhook",
+				"description": "Queues a `webhook.test` event through the normal delivery pipeline using the endpoint's current URL, secret, and custom headers. The endpoint must be active.",
+				"responses": {
+					"202": {
+						"description": "Test delivery queued.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WebhookTestResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"409": {
+						"description": "The webhook endpoint is inactive.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/webhook-deliveries": {
+			"get": {
+				"tags": [
+					"Webhooks"
+				],
+				"operationId": "listWebhookDeliveries",
+				"summary": "List webhook deliveries",
+				"description": "Returns retained delivery logs visible to the API key, newest first. Results are capped to the 1000 most recent matching deliveries.",
+				"parameters": [
+					{
+						"name": "webhookId",
+						"in": "query",
+						"description": "Filter by webhook endpoint id.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "event",
+						"in": "query",
+						"description": "Filter by webhook event type.",
+						"schema": {
+							"$ref": "#/components/schemas/WebhookEvent"
+						}
+					},
+					{
+						"name": "status",
+						"in": "query",
+						"description": "Filter by delivery status.",
+						"schema": {
+							"$ref": "#/components/schemas/WebhookDeliveryStatus"
+						}
+					},
+					{
+						"name": "dateFrom",
+						"in": "query",
+						"description": "Only include deliveries created at or after this ISO 8601 timestamp.",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "dateTo",
+						"in": "query",
+						"description": "Only include deliveries created at or before this ISO 8601 timestamp. Must be later than `dateFrom`.",
+						"schema": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					{
+						"name": "page",
+						"in": "query",
+						"description": "1-based page number.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"default": 1
+						}
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"description": "Page size.",
+						"schema": {
+							"type": "integer",
+							"minimum": 1,
+							"maximum": 100,
+							"default": 20
+						}
+					}
+				],
+				"responses": {
+					"200": {
+						"description": "Webhook deliveries returned.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WebhookDeliveriesListResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
+		},
+		"/v1/webhook-deliveries/{deliveryId}/redeliver": {
+			"parameters": [
+				{
+					"name": "deliveryId",
+					"in": "path",
+					"required": true,
+					"description": "PostZen webhook delivery id.",
+					"schema": {
+						"type": "string"
+					}
+				}
+			],
+			"post": {
+				"tags": [
+					"Webhooks"
+				],
+				"operationId": "redeliverWebhookDelivery",
+				"summary": "Redeliver a webhook event",
+				"description": "Queues a new six-attempt delivery run on the retained delivery record while preserving its event id and attempt history. The endpoint must still exist and be active, and the delivery must not already be in progress.",
+				"responses": {
+					"202": {
+						"description": "Webhook redelivery queued.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/WebhookRedeliveryResponse"
+								}
+							}
+						}
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"409": {
+						"description": "The endpoint is unavailable, the delivery is expired, or a delivery is already in progress.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				}
+			}
 		}
 	},
 	"components": {
@@ -2768,19 +6220,21 @@
 				}
 			},
 			"PaymentRequired": {
-				"description": "A billing limit prevents the requested connection.",
+				"description": "A plan limit, missing payment method, or paused account prevents the requested operation.",
 				"content": {
 					"application/json": {
 						"schema": {
 							"$ref": "#/components/schemas/PaymentRequiredError"
 						},
 						"example": {
-							"error": "Add a payment method before connecting more than 2 social accounts.",
+							"error": "The Free plan includes 2 connected accounts. Upgrade your plan to connect more.",
 							"code": "paymentRequired",
 							"reason": "freeTierExceeded",
 							"documentationUrl": "https://docs.postzen.dev/api-reference/connect/create-connect-url",
 							"dashboardUrl": "https://app.postzen.dev/settings?tab=billing",
 							"details": {
+								"planId": "free",
+								"includedAccounts": 2,
 								"freeTierAccountLimit": 2,
 								"currentAccountCount": 2,
 								"hasPaymentMethod": false
@@ -2811,6 +6265,22 @@
 						},
 						"example": {
 							"error": "Not found"
+						}
+					}
+				}
+			},
+			"Conflict": {
+				"description": "The resource is busy or conflicts with an in-progress operation.",
+				"content": {
+					"application/json": {
+						"schema": {
+							"$ref": "#/components/schemas/ErrorResponse"
+						},
+						"example": {
+							"error": "Post publishing is in progress. Retry after it completes.",
+							"type": "invalid_request_error",
+							"code": "post_publish_in_progress",
+							"param": null
 						}
 					}
 				}
@@ -2853,6 +6323,787 @@
 			}
 		},
 		"schemas": {
+			"CommentAutomation": {
+				"type": "object",
+				"required": [
+					"accountId",
+					"profileId",
+					"name",
+					"trigger",
+					"keywords",
+					"matchMode",
+					"excludeKeywords",
+					"typoTolerance",
+					"dmMessage",
+					"dmMessageVariations",
+					"buttons",
+					"commentReplyVariations",
+					"dmDelaySeconds",
+					"commentReplyDelaySeconds",
+					"isActive",
+					"linkTracking",
+					"id",
+					"platform",
+					"alsoMatchInDms",
+					"stats",
+					"createdAt",
+					"updatedAt"
+				],
+				"properties": {
+					"accountId": {
+						"type": "string",
+						"description": "Connected Instagram account id. Immutable after creation."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "If supplied, must equal the account profile."
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 120,
+						"description": "Trimmed name."
+					},
+					"trigger": {
+						"type": "string",
+						"enum": [
+							"comment",
+							"story_reply"
+						],
+						"default": "comment"
+					},
+					"platformPostId": {
+						"type": "string",
+						"description": "Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching."
+					},
+					"postId": {
+						"type": "string",
+						"description": "Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId."
+					},
+					"postTitle": {
+						"type": "string",
+						"maxLength": 200
+					},
+					"keywords": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 100
+						},
+						"maxItems": 50,
+						"default": [],
+						"description": "Trimmed and deduplicated case-insensitively. Empty matches every comment."
+					},
+					"matchMode": {
+						"type": "string",
+						"enum": [
+							"exact",
+							"contains",
+							"word"
+						],
+						"default": "contains"
+					},
+					"excludeKeywords": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 100
+						},
+						"maxItems": 50,
+						"default": [],
+						"description": "Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively."
+					},
+					"typoTolerance": {
+						"type": "boolean",
+						"default": false,
+						"description": "word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4."
+					},
+					"dmMessage": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 1000,
+						"description": "Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters."
+					},
+					"dmMessageVariations": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000
+						},
+						"maxItems": 5,
+						"default": [],
+						"description": "Same limits as dmMessage. Uniform random choice from the base message and variations."
+					},
+					"buttons": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CommentAutomationButton"
+						},
+						"maxItems": 3,
+						"default": []
+					},
+					"commentReply": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 1000,
+						"description": "Optional public reply, sent only after successful comment DM. Ignored for story_reply."
+					},
+					"commentReplyVariations": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000
+						},
+						"maxItems": 5,
+						"default": [],
+						"description": "Uniform random choice independent of the DM."
+					},
+					"dmDelaySeconds": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 86400,
+						"default": 0
+					},
+					"commentReplyDelaySeconds": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 86400,
+						"default": 0,
+						"description": "Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds)."
+					},
+					"isActive": {
+						"type": "boolean",
+						"default": true
+					},
+					"linkTracking": {
+						"type": "boolean",
+						"enum": [
+							false
+						],
+						"default": false
+					},
+					"id": {
+						"type": "string"
+					},
+					"platform": {
+						"type": "string",
+						"enum": [
+							"instagram"
+						]
+					},
+					"alsoMatchInDms": {
+						"type": "boolean",
+						"enum": [
+							false
+						]
+					},
+					"stats": {
+						"type": "object",
+						"required": [
+							"totalTriggered",
+							"totalSent",
+							"totalFailed"
+						],
+						"properties": {
+							"totalTriggered": {
+								"type": "integer",
+								"minimum": 0
+							},
+							"totalSent": {
+								"type": "integer",
+								"minimum": 0
+							},
+							"totalFailed": {
+								"type": "integer",
+								"minimum": 0
+							}
+						}
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"CommentAutomationButton": {
+				"type": "object",
+				"required": [
+					"type",
+					"title",
+					"url"
+				],
+				"properties": {
+					"type": {
+						"type": "string",
+						"enum": [
+							"url"
+						]
+					},
+					"title": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 20
+					},
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"pattern": "^https?://",
+						"description": "Public HTTP(S) URL; private hosts and embedded credentials are rejected."
+					}
+				}
+			},
+			"CommentAutomationCreateRequest": {
+				"type": "object",
+				"required": [
+					"accountId",
+					"name",
+					"dmMessage"
+				],
+				"properties": {
+					"accountId": {
+						"type": "string",
+						"description": "Connected Instagram account id. Immutable after creation."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "If supplied, must equal the account profile."
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 120,
+						"description": "Trimmed name."
+					},
+					"trigger": {
+						"type": "string",
+						"enum": [
+							"comment",
+							"story_reply"
+						],
+						"default": "comment"
+					},
+					"platformPostId": {
+						"type": "string",
+						"description": "Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching."
+					},
+					"postId": {
+						"type": "string",
+						"description": "Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId."
+					},
+					"postTitle": {
+						"type": "string",
+						"maxLength": 200
+					},
+					"keywords": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 100
+						},
+						"maxItems": 50,
+						"default": [],
+						"description": "Trimmed and deduplicated case-insensitively. Empty matches every comment."
+					},
+					"matchMode": {
+						"type": "string",
+						"enum": [
+							"exact",
+							"contains",
+							"word"
+						],
+						"default": "contains"
+					},
+					"excludeKeywords": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 100
+						},
+						"maxItems": 50,
+						"default": [],
+						"description": "Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively."
+					},
+					"typoTolerance": {
+						"type": "boolean",
+						"default": false,
+						"description": "word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4."
+					},
+					"dmMessage": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 1000,
+						"description": "Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters."
+					},
+					"dmMessageVariations": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000
+						},
+						"maxItems": 5,
+						"default": [],
+						"description": "Same limits as dmMessage. Uniform random choice from the base message and variations."
+					},
+					"buttons": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CommentAutomationButton"
+						},
+						"maxItems": 3,
+						"default": []
+					},
+					"commentReply": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 1000,
+						"description": "Optional public reply, sent only after successful comment DM. Ignored for story_reply."
+					},
+					"commentReplyVariations": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000
+						},
+						"maxItems": 5,
+						"default": [],
+						"description": "Uniform random choice independent of the DM."
+					},
+					"dmDelaySeconds": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 86400,
+						"default": 0
+					},
+					"commentReplyDelaySeconds": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 86400,
+						"default": 0,
+						"description": "Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds)."
+					},
+					"isActive": {
+						"type": "boolean",
+						"default": true
+					},
+					"linkTracking": {
+						"type": "boolean",
+						"enum": [
+							false
+						],
+						"default": false
+					}
+				},
+				"additionalProperties": false,
+				"description": "Maximum 100 automations per user; at most one active per-post automation for each account and post reference. template, audience, followGate, alsoMatchInDms, clickTag and linkTracking:true return 400 unsupported. Instagram only. A comment permits one private reply ever, within 7 days. Story replies use normal DMs inside the 24-hour messaging window. Buttons fall back to text with title and URL lines if Meta rejects the template. Reconnect the account on 403 platformCapabilityMissing to grant instagram_business_manage_comments and instagram_business_manage_messages."
+			},
+			"CommentAutomationUpdateRequest": {
+				"type": "object",
+				"properties": {
+					"profileId": {
+						"type": "string",
+						"description": "If supplied, must equal the account profile."
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 120,
+						"description": "Trimmed name."
+					},
+					"trigger": {
+						"type": "string",
+						"enum": [
+							"comment",
+							"story_reply"
+						],
+						"default": "comment"
+					},
+					"platformPostId": {
+						"type": "string",
+						"description": "Instagram media or story id. Mutually exclusive with postId; omit both for account-wide matching."
+					},
+					"postId": {
+						"type": "string",
+						"description": "Owned PostZen post with an Instagram target on this account. Resolves providerPostId at match time, including posts not yet published. Mutually exclusive with platformPostId."
+					},
+					"postTitle": {
+						"type": "string",
+						"maxLength": 200
+					},
+					"keywords": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 100
+						},
+						"maxItems": 50,
+						"default": [],
+						"description": "Trimmed and deduplicated case-insensitively. Empty matches every comment."
+					},
+					"matchMode": {
+						"type": "string",
+						"enum": [
+							"exact",
+							"contains",
+							"word"
+						],
+						"default": "contains"
+					},
+					"excludeKeywords": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 100
+						},
+						"maxItems": 50,
+						"default": [],
+						"description": "Vetoes matching using the same matchMode; trimmed and deduplicated case-insensitively."
+					},
+					"typoTolerance": {
+						"type": "boolean",
+						"default": false,
+						"description": "word mode only: Damerau-Levenshtein per word, 1 edit for 4–7 characters, 2 edits for 8+, none for fewer than 4."
+					},
+					"dmMessage": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 1000,
+						"description": "Plain text: at most 1000 UTF-8 bytes. With buttons: at most 640 characters."
+					},
+					"dmMessageVariations": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000
+						},
+						"maxItems": 5,
+						"default": [],
+						"description": "Same limits as dmMessage. Uniform random choice from the base message and variations."
+					},
+					"buttons": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CommentAutomationButton"
+						},
+						"maxItems": 3,
+						"default": []
+					},
+					"commentReply": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 1000,
+						"description": "Optional public reply, sent only after successful comment DM. Ignored for story_reply."
+					},
+					"commentReplyVariations": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 1000
+						},
+						"maxItems": 5,
+						"default": [],
+						"description": "Uniform random choice independent of the DM."
+					},
+					"dmDelaySeconds": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 86400,
+						"default": 0
+					},
+					"commentReplyDelaySeconds": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 86400,
+						"default": 0,
+						"description": "Effective delay is max(dmDelaySeconds, commentReplyDelaySeconds)."
+					},
+					"isActive": {
+						"type": "boolean",
+						"default": true
+					},
+					"linkTracking": {
+						"type": "boolean",
+						"enum": [
+							false
+						],
+						"default": false
+					}
+				},
+				"additionalProperties": false,
+				"description": "Partial update. accountId is immutable. Enabling checks capabilities and duplicate per-post limits. Unsupported fields are rejected as on create."
+			},
+			"CommentAutomationLog": {
+				"type": "object",
+				"required": [
+					"id",
+					"source",
+					"commentId",
+					"commenterId",
+					"status",
+					"createdAt",
+					"updatedAt"
+				],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"commentId": {
+						"type": "string"
+					},
+					"platformPostId": {
+						"type": "string"
+					},
+					"commenterId": {
+						"type": "string"
+					},
+					"commenterName": {
+						"type": "string"
+					},
+					"commentText": {
+						"type": "string"
+					},
+					"skipReason": {
+						"type": "string"
+					},
+					"error": {
+						"type": "string"
+					},
+					"sentMessageId": {
+						"type": "string"
+					},
+					"commentReplyError": {
+						"type": "string"
+					},
+					"source": {
+						"type": "string",
+						"enum": [
+							"comment",
+							"story_reply"
+						]
+					},
+					"status": {
+						"type": "string",
+						"enum": [
+							"pending",
+							"sent",
+							"failed",
+							"skipped"
+						]
+					},
+					"buttonsDropped": {
+						"type": "boolean"
+					},
+					"commentReplyStatus": {
+						"type": "string",
+						"enum": [
+							"pending",
+							"sent",
+							"failed",
+							"skipped"
+						]
+					},
+					"nextDueAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"CommentAutomationListResponse": {
+				"type": "object",
+				"required": [
+					"automations"
+				],
+				"properties": {
+					"automations": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CommentAutomation"
+						}
+					}
+				}
+			},
+			"CommentAutomationResponse": {
+				"type": "object",
+				"required": [
+					"message",
+					"automation"
+				],
+				"properties": {
+					"message": {
+						"type": "string"
+					},
+					"automation": {
+						"$ref": "#/components/schemas/CommentAutomation"
+					}
+				}
+			},
+			"CommentAutomationDetailResponse": {
+				"type": "object",
+				"required": [
+					"automation",
+					"logs"
+				],
+				"properties": {
+					"automation": {
+						"$ref": "#/components/schemas/CommentAutomation"
+					},
+					"logs": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CommentAutomationLog"
+						},
+						"maxItems": 20
+					}
+				}
+			},
+			"CommentAutomationLogsResponse": {
+				"type": "object",
+				"required": [
+					"logs",
+					"pagination"
+				],
+				"properties": {
+					"logs": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/CommentAutomationLog"
+						}
+					},
+					"pagination": {
+						"type": "object",
+						"required": [
+							"total",
+							"limit",
+							"skip",
+							"hasMore"
+						],
+						"properties": {
+							"total": {
+								"type": "integer",
+								"maximum": 5000
+							},
+							"limit": {
+								"type": "integer",
+								"minimum": 1,
+								"maximum": 200
+							},
+							"skip": {
+								"type": "integer",
+								"minimum": 0
+							},
+							"hasMore": {
+								"type": "boolean"
+							}
+						}
+					}
+				}
+			},
+			"BulkUploadResult": {
+				"type": "object",
+				"required": [
+					"total",
+					"valid",
+					"invalid",
+					"results",
+					"warnings"
+				],
+				"properties": {
+					"total": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 500
+					},
+					"valid": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"invalid": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"results": {
+						"type": "array",
+						"items": {
+							"oneOf": [
+								{
+									"type": "object",
+									"required": [
+										"rowIndex",
+										"ok"
+									],
+									"properties": {
+										"rowIndex": {
+											"type": "integer",
+											"minimum": 1
+										},
+										"ok": {
+											"type": "boolean",
+											"const": true
+										},
+										"createdPostId": {
+											"type": "string",
+											"description": "Present when the row was created by this request or replayed from a previous request with the same idempotency inputs. On dry-run, only replayed rows include this field."
+										}
+									}
+								},
+								{
+									"type": "object",
+									"required": [
+										"rowIndex",
+										"ok",
+										"errors"
+									],
+									"properties": {
+										"rowIndex": {
+											"type": "integer",
+											"minimum": 1
+										},
+										"ok": {
+											"type": "boolean",
+											"const": false
+										},
+										"errors": {
+											"type": "array",
+											"items": {
+												"type": "string"
+											}
+										}
+									}
+								}
+							]
+						}
+					},
+					"warnings": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						}
+					}
+				}
+			},
 			"ErrorResponse": {
 				"type": "object",
 				"required": [
@@ -2861,6 +7112,18 @@
 				"properties": {
 					"error": {
 						"type": "string"
+					},
+					"type": {
+						"type": "string"
+					},
+					"code": {
+						"type": "string"
+					},
+					"param": {
+						"type": [
+							"string",
+							"null"
+						]
 					}
 				}
 			},
@@ -3823,7 +8086,9 @@
 						"type": "string",
 						"enum": [
 							"freeTierExceeded",
-							"xRequiresPaymentMethod"
+							"xRequiresPaymentMethod",
+							"accountPaused",
+							"freePostLimitExceeded"
 						]
 					},
 					"documentationUrl": {
@@ -3836,15 +8101,37 @@
 					},
 					"details": {
 						"type": "object",
+						"description": "Reason-specific context. Account-connection limits use the plan and account fields; `freePostLimitExceeded` uses `postsUsed` and `postLimit`.",
 						"properties": {
-							"freeTierAccountLimit": {
+							"planId": {
+								"type": "string",
+								"enum": [
+									"free",
+									"starter",
+									"pro",
+									"scale"
+								]
+							},
+							"includedAccounts": {
 								"type": "number"
+							},
+							"freeTierAccountLimit": {
+								"type": "number",
+								"description": "Same value as `includedAccounts`; retained for compatibility."
 							},
 							"currentAccountCount": {
 								"type": "number"
 							},
 							"hasPaymentMethod": {
 								"type": "boolean"
+							},
+							"postsUsed": {
+								"type": "number",
+								"description": "Platform-posts already counted in the current UTC month."
+							},
+							"postLimit": {
+								"type": "number",
+								"description": "The plan's monthly platform-post allowance."
 							}
 						}
 					}
@@ -4343,6 +8630,996 @@
 					}
 				}
 			},
+			"InboxComment": {
+				"type": "object",
+				"description": "A comment or reply normalized to one shape across Instagram, Facebook, and Threads. A field the platform does not report is absent rather than zero.",
+				"required": [
+					"id",
+					"message",
+					"createdTime",
+					"from",
+					"platform",
+					"replies",
+					"repliesHasMore",
+					"canReply",
+					"canDelete",
+					"canHide",
+					"isHidden",
+					"parentId"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Platform comment id. Pass it as `commentId` to the reply, delete, and hide endpoints."
+					},
+					"message": {
+						"type": "string",
+						"description": "Comment body as plain text."
+					},
+					"createdTime": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the platform recorded the comment."
+					},
+					"from": {
+						"type": "object",
+						"description": "Author of the comment.",
+						"required": [
+							"isOwner"
+						],
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"name": {
+								"type": "string"
+							},
+							"username": {
+								"type": "string"
+							},
+							"picture": {
+								"type": "string",
+								"format": "uri"
+							},
+							"isOwner": {
+								"type": "boolean",
+								"description": "True when the connected account wrote the comment."
+							}
+						}
+					},
+					"likeCount": {
+						"type": "integer",
+						"description": "Likes on the comment, when the platform reports a count. Threads never does."
+					},
+					"replyCount": {
+						"type": "integer",
+						"description": "Replies to the comment, when the platform reports a count."
+					},
+					"platform": {
+						"type": "string",
+						"enum": [
+							"instagram",
+							"facebook",
+							"threads"
+						],
+						"description": "Platform the comment lives on."
+					},
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "Permalink to the comment, when the platform returns one."
+					},
+					"replies": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/InboxComment"
+						},
+						"description": "First page of nested replies, when the listing returned them cheaply. Instagram threads are two levels deep, so a reply's own `replies` is always empty."
+					},
+					"repliesHasMore": {
+						"type": "boolean",
+						"description": "True when the comment has replies beyond the ones in `replies`. Fetch them by passing this comment's id as `commentId`."
+					},
+					"canReply": {
+						"type": "boolean",
+						"description": "True when the connected account's granted scopes and the platform's own rules allow replying to this comment."
+					},
+					"canDelete": {
+						"type": "boolean",
+						"description": "True when this comment can be deleted. Facebook reports it per comment; Threads reports it only for replies the connected account wrote."
+					},
+					"canHide": {
+						"type": "boolean",
+						"description": "True when this comment can be hidden. Facebook reports it per comment; on Threads only top-level replies on the account's own posts qualify."
+					},
+					"isHidden": {
+						"type": "boolean",
+						"description": "True when the comment is currently hidden. Threads' `HIDDEN` and `COVERED` states both map to true."
+					},
+					"parentId": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Comment this one replies to, or `null` when it is a top-level comment on the post."
+					}
+				}
+			},
+			"InboxCommentsResponse": {
+				"type": "object",
+				"required": [
+					"status",
+					"comments",
+					"pagination",
+					"meta"
+				],
+				"properties": {
+					"status": {
+						"type": "string",
+						"const": "success"
+					},
+					"comments": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/InboxComment"
+						}
+					},
+					"pagination": {
+						"type": "object",
+						"required": [
+							"hasMore"
+						],
+						"properties": {
+							"hasMore": {
+								"type": "boolean",
+								"description": "True when the platform has another page of comments."
+							},
+							"cursor": {
+								"type": "string",
+								"description": "Opaque cursor for the next page. Present only when `hasMore` is true."
+							}
+						}
+					},
+					"meta": {
+						"type": "object",
+						"required": [
+							"platform",
+							"postId",
+							"accountId",
+							"lastUpdated"
+						],
+						"properties": {
+							"platform": {
+								"type": "string",
+								"enum": [
+									"instagram",
+									"facebook",
+									"threads"
+								],
+								"description": "Platform the comment lives on."
+							},
+							"postId": {
+								"type": "string",
+								"description": "Platform post id the comments were read from. When a PostZen post id was supplied it is the resolved platform id, not the id you sent."
+							},
+							"accountId": {
+								"type": "string",
+								"description": "PostZen account id used for the read."
+							},
+							"lastUpdated": {
+								"type": "string",
+								"format": "date-time",
+								"description": "When PostZen fetched this page from the platform."
+							}
+						}
+					}
+				}
+			},
+			"InboxReplyRequest": {
+				"type": "object",
+				"required": [
+					"accountId",
+					"message"
+				],
+				"properties": {
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id of the connected Instagram, Facebook, or Threads account that owns the post."
+					},
+					"message": {
+						"type": "string",
+						"description": "Comment text to publish."
+					},
+					"commentId": {
+						"type": "string",
+						"description": "Reply to this comment instead of commenting on the post. On Instagram a reply to a reply is redirected to its top-level parent."
+					},
+					"attachmentUrl": {
+						"type": "string",
+						"format": "uri",
+						"description": "Facebook only. Publicly reachable image URL to attach to the comment. Sending it for any other platform returns `400 attachmentUnsupported`."
+					}
+				}
+			},
+			"InboxReplyResponse": {
+				"type": "object",
+				"required": [
+					"success",
+					"data"
+				],
+				"properties": {
+					"success": {
+						"type": "boolean",
+						"const": true
+					},
+					"data": {
+						"type": "object",
+						"required": [
+							"commentId",
+							"isReply"
+						],
+						"properties": {
+							"commentId": {
+								"type": "string",
+								"description": "Platform id of the comment that was created."
+							},
+							"isReply": {
+								"type": "boolean",
+								"description": "True when the comment was published as a reply to another comment rather than directly on the post."
+							}
+						}
+					}
+				}
+			},
+			"InboxHideRequest": {
+				"type": "object",
+				"required": [
+					"accountId"
+				],
+				"properties": {
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id of the connected Instagram, Facebook, or Threads account that owns the post."
+					}
+				}
+			},
+			"InboxHideResponse": {
+				"type": "object",
+				"required": [
+					"status",
+					"commentId",
+					"hidden",
+					"platform"
+				],
+				"properties": {
+					"status": {
+						"type": "string",
+						"const": "success"
+					},
+					"commentId": {
+						"type": "string",
+						"description": "Platform id of the comment."
+					},
+					"hidden": {
+						"type": "boolean",
+						"description": "The comment's hidden state after the call."
+					},
+					"platform": {
+						"type": "string",
+						"enum": [
+							"instagram",
+							"facebook",
+							"threads"
+						],
+						"description": "Platform the comment lives on."
+					}
+				}
+			},
+			"InboxActionResponse": {
+				"type": "object",
+				"description": "Acknowledgement returned by an inbox write that has nothing to return.",
+				"required": [
+					"success",
+					"data"
+				],
+				"properties": {
+					"success": {
+						"type": "boolean",
+						"const": true
+					},
+					"data": {
+						"$ref": "#/components/schemas/MessageResponse"
+					}
+				}
+			},
+			"InboxErrorResponse": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/ErrorResponse"
+					},
+					{
+						"type": "object",
+						"properties": {
+							"code": {
+								"type": "string",
+								"description": "Machine-readable failure reason. PostZen's own reasons are `accountNotFound`, `forbidden`, `platformUnsupported`, `platformCapabilityMissing`, `connectionDead`, `postNotFound`, `postNotPublished`, `attachmentUnsupported`, and `publishPending` (Threads accepted the reply container but had not published it yet — the reply may still appear, so check the thread before retrying). Failures raised by the platform carry the platform's own error code instead, which for Meta is a numeric string such as `100` or `190`. Absent on plain parameter-validation errors and on PostZen's own rate-limit response."
+							},
+							"platform": {
+								"type": "string",
+								"description": "Platform the failure relates to, when PostZen could determine one. `platformUnsupported` reports the account's actual platform, which is why this is not limited to the three inbox platforms."
+							},
+							"platformError": {
+								"type": "string",
+								"description": "The platform's own error message, present when the failure came from the platform rather than from PostZen."
+							}
+						}
+					}
+				]
+			},
+			"InboxConversation": {
+				"type": "object",
+				"required": [
+					"id",
+					"platform",
+					"accountId",
+					"accountUsername",
+					"updatedTime",
+					"status",
+					"unreadCount"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "The platform's own conversation (thread) id. This is the `conversationId` every other conversation endpoint takes, not a PostZen document id."
+					},
+					"platform": {
+						"type": "string",
+						"enum": [
+							"instagram"
+						],
+						"description": "Platform the thread lives on."
+					},
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id the thread belongs to."
+					},
+					"accountUsername": {
+						"type": "string",
+						"description": "Username of that connected account, so a multi-account list needs no second lookup."
+					},
+					"participantId": {
+						"type": "string",
+						"description": "The other party's platform id (the IGSID on Instagram). Absent when the platform did not name the participant."
+					},
+					"participantName": {
+						"type": "string"
+					},
+					"participantUsername": {
+						"type": "string"
+					},
+					"participantPicture": {
+						"type": "string",
+						"format": "uri"
+					},
+					"participants": {
+						"type": "array",
+						"description": "Every party on the thread, including the connected account itself. Present when the platform returned the participant edge.",
+						"items": {
+							"type": "object",
+							"required": [
+								"id"
+							],
+							"properties": {
+								"id": {
+									"type": "string"
+								},
+								"name": {
+									"type": "string"
+								},
+								"username": {
+									"type": "string"
+								}
+							}
+						}
+					},
+					"lastMessage": {
+						"type": "string",
+						"description": "Text of the most recent message PostZen has synced, when the platform reported one cheaply."
+					},
+					"lastMessageAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedTime": {
+						"type": "string",
+						"format": "date-time",
+						"description": "The platform's own last-activity time for the thread. This is the list sort key."
+					},
+					"status": {
+						"type": "string",
+						"enum": [
+							"active",
+							"archived"
+						],
+						"description": "PostZen-local state. Meta has no archive API, so archiving affects PostZen only and is never overwritten by a sync."
+					},
+					"unreadCount": {
+						"type": "integer",
+						"description": "Incoming messages newer than the local read watermark. Marking the thread read sets it to 0 and a later sync cannot resurrect a stale count."
+					},
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "Deep link into the platform's own inbox, when the platform reports one. Instagram has no equivalent, so it is currently always absent."
+					}
+				}
+			},
+			"InboxDmPagination": {
+				"type": "object",
+				"required": [
+					"hasMore",
+					"nextCursor"
+				],
+				"properties": {
+					"hasMore": {
+						"type": "boolean"
+					},
+					"nextCursor": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Pass back as `cursor` for the next page. `null` when the last page has been returned."
+					}
+				}
+			},
+			"InboxDmFailedAccount": {
+				"type": "object",
+				"required": [
+					"accountId",
+					"accountUsername",
+					"platform",
+					"error",
+					"code"
+				],
+				"properties": {
+					"accountId": {
+						"type": "string"
+					},
+					"accountUsername": {
+						"type": "string"
+					},
+					"platform": {
+						"type": "string",
+						"enum": [
+							"instagram"
+						]
+					},
+					"error": {
+						"type": "string",
+						"description": "Why the refresh failed, in PostZen or the platform’s own words."
+					},
+					"code": {
+						"type": "string"
+					},
+					"retryAfter": {
+						"type": "integer",
+						"description": "Seconds the platform asked PostZen to wait, when it said."
+					}
+				}
+			},
+			"InboxDmMeta": {
+				"type": "object",
+				"required": [
+					"accountsQueried",
+					"accountsFailed",
+					"failedAccounts",
+					"lastUpdated"
+				],
+				"description": "How the read-through refresh went. A failure here is a failure to REFRESH, not to answer: the stored threads are still returned alongside it.",
+				"properties": {
+					"accountsQueried": {
+						"type": "integer"
+					},
+					"accountsFailed": {
+						"type": "integer"
+					},
+					"failedAccounts": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/InboxDmFailedAccount"
+						}
+					},
+					"lastUpdated": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"InboxConversationsResponse": {
+				"type": "object",
+				"required": [
+					"data",
+					"pagination",
+					"meta"
+				],
+				"properties": {
+					"data": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/InboxConversation"
+						}
+					},
+					"pagination": {
+						"$ref": "#/components/schemas/InboxDmPagination"
+					},
+					"meta": {
+						"$ref": "#/components/schemas/InboxDmMeta"
+					}
+				}
+			},
+			"InboxConversationResponse": {
+				"type": "object",
+				"required": [
+					"data"
+				],
+				"properties": {
+					"data": {
+						"$ref": "#/components/schemas/InboxConversation"
+					}
+				}
+			},
+			"InboxConversationSearchMatch": {
+				"type": "object",
+				"required": [
+					"id",
+					"direction",
+					"timestamp"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Platform message id of the matching message."
+					},
+					"text": {
+						"type": "string"
+					},
+					"direction": {
+						"type": "string",
+						"enum": [
+							"incoming",
+							"outgoing"
+						]
+					},
+					"timestamp": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"InboxConversationSearchHit": {
+				"type": "object",
+				"required": [
+					"conversation",
+					"matchCount",
+					"matches"
+				],
+				"properties": {
+					"conversation": {
+						"type": "object",
+						"required": [
+							"id",
+							"platform",
+							"accountId",
+							"status"
+						],
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"platform": {
+								"type": "string",
+								"enum": [
+									"instagram"
+								]
+							},
+							"accountId": {
+								"type": "string"
+							},
+							"participantName": {
+								"type": "string"
+							},
+							"participantUsername": {
+								"type": "string"
+							},
+							"participantPicture": {
+								"type": "string",
+								"format": "uri"
+							},
+							"status": {
+								"type": "string",
+								"enum": [
+									"active",
+									"archived"
+								]
+							},
+							"lastMessage": {
+								"type": "string"
+							},
+							"lastMessageAt": {
+								"type": "string",
+								"format": "date-time"
+							}
+						}
+					},
+					"matchCount": {
+						"type": "integer",
+						"description": "Matching messages in the thread. `matches` carries at most the first five of them; a thread matched only on the participant’s name reports 0."
+					},
+					"matches": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/InboxConversationSearchMatch"
+						}
+					}
+				}
+			},
+			"InboxConversationSearchResponse": {
+				"type": "object",
+				"required": [
+					"data",
+					"pagination",
+					"meta"
+				],
+				"properties": {
+					"data": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/InboxConversationSearchHit"
+						}
+					},
+					"pagination": {
+						"$ref": "#/components/schemas/InboxDmPagination"
+					},
+					"meta": {
+						"$ref": "#/components/schemas/InboxDmMeta"
+					}
+				}
+			},
+			"InboxConversationUpdateRequest": {
+				"type": "object",
+				"required": [
+					"accountId",
+					"status"
+				],
+				"properties": {
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id that owns the conversation."
+					},
+					"status": {
+						"type": "string",
+						"enum": [
+							"active",
+							"archived"
+						]
+					}
+				}
+			},
+			"InboxConversationUpdateResponse": {
+				"type": "object",
+				"required": [
+					"success",
+					"data"
+				],
+				"properties": {
+					"success": {
+						"type": "boolean",
+						"const": true
+					},
+					"data": {
+						"type": "object",
+						"required": [
+							"id",
+							"accountId",
+							"status",
+							"platform",
+							"updatedAt"
+						],
+						"properties": {
+							"id": {
+								"type": "string"
+							},
+							"accountId": {
+								"type": "string"
+							},
+							"status": {
+								"type": "string",
+								"enum": [
+									"active",
+									"archived"
+								]
+							},
+							"platform": {
+								"type": "string",
+								"enum": [
+									"instagram"
+								]
+							},
+							"updatedAt": {
+								"type": "string",
+								"format": "date-time"
+							}
+						}
+					}
+				}
+			},
+			"InboxConversationReadRequest": {
+				"type": "object",
+				"required": [
+					"accountId"
+				],
+				"properties": {
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id that owns the conversation."
+					}
+				}
+			},
+			"InboxConversationReadResponse": {
+				"type": "object",
+				"required": [
+					"success",
+					"markedCount"
+				],
+				"properties": {
+					"success": {
+						"type": "boolean",
+						"const": true
+					},
+					"markedCount": {
+						"type": "integer",
+						"description": "Incoming messages that crossed from unread to read on this call. Marking an already-read thread returns 0 rather than failing."
+					}
+				}
+			},
+			"InboxMessageAttachment": {
+				"type": "object",
+				"required": [
+					"type",
+					"url"
+				],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"image",
+							"video",
+							"audio",
+							"file"
+						]
+					},
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "Platform-hosted URL. Meta expires these, so treat them as short-lived."
+					},
+					"previewUrl": {
+						"type": "string",
+						"format": "uri"
+					}
+				}
+			},
+			"InboxMessage": {
+				"type": "object",
+				"required": [
+					"id",
+					"conversationId",
+					"accountId",
+					"platform",
+					"direction",
+					"createdAt"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Platform message id."
+					},
+					"conversationId": {
+						"type": "string"
+					},
+					"accountId": {
+						"type": "string"
+					},
+					"platform": {
+						"type": "string",
+						"enum": [
+							"instagram"
+						]
+					},
+					"message": {
+						"type": "string",
+						"description": "Message text. Absent on an attachment-only message, and on older Instagram messages the platform no longer returns text for."
+					},
+					"senderId": {
+						"type": "string"
+					},
+					"senderName": {
+						"type": "string"
+					},
+					"direction": {
+						"type": "string",
+						"enum": [
+							"incoming",
+							"outgoing"
+						],
+						"description": "Resolved against the connected account’s own identity: `outgoing` is a message the account sent."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"attachments": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/InboxMessageAttachment"
+						}
+					},
+					"storyReply": {
+						"type": "boolean",
+						"description": "Instagram only, and present only when the platform said so."
+					},
+					"isStoryMention": {
+						"type": "boolean",
+						"description": "Instagram only, and present only when the platform said so."
+					}
+				}
+			},
+			"InboxMessagesResponse": {
+				"type": "object",
+				"required": [
+					"status",
+					"pagination",
+					"sortOrderApplied",
+					"messages",
+					"lastUpdated"
+				],
+				"properties": {
+					"status": {
+						"type": "string",
+						"const": "ok"
+					},
+					"pagination": {
+						"$ref": "#/components/schemas/InboxDmPagination"
+					},
+					"sortOrderApplied": {
+						"type": "string",
+						"enum": [
+							"asc",
+							"desc"
+						]
+					},
+					"messages": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/InboxMessage"
+						}
+					},
+					"lastUpdated": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"InboxMessageSendRequest": {
+				"type": "object",
+				"required": [
+					"accountId"
+				],
+				"description": "Exactly one of `message` or `attachmentUrl` is required. Meta’s Send API carries one payload per call, so the two cannot be combined — send two messages instead.",
+				"properties": {
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id that owns the conversation."
+					},
+					"message": {
+						"type": "string",
+						"description": "Message text. Cannot be combined with `attachmentUrl`: Meta accepts one payload per call, so a request carrying both is rejected with a 400 rather than silently sending half of it."
+					},
+					"attachmentUrl": {
+						"type": "string",
+						"format": "uri",
+						"description": "Publicly fetchable http(s) URL. Meta downloads it itself, so it must be reachable without credentials — `POST /v1/media/upload-direct` returns a URL that qualifies."
+					},
+					"attachmentType": {
+						"type": "string",
+						"enum": [
+							"image",
+							"video",
+							"audio",
+							"file"
+						],
+						"description": "Required whenever `attachmentUrl` is set."
+					}
+				}
+			},
+			"InboxMessageSendResponse": {
+				"type": "object",
+				"required": [
+					"success",
+					"data"
+				],
+				"properties": {
+					"success": {
+						"type": "boolean",
+						"const": true
+					},
+					"data": {
+						"type": "object",
+						"required": [
+							"messageId",
+							"conversationId",
+							"sentAt"
+						],
+						"properties": {
+							"messageId": {
+								"type": "string"
+							},
+							"conversationId": {
+								"type": "string"
+							},
+							"sentAt": {
+								"type": "string",
+								"format": "date-time"
+							},
+							"message": {
+								"type": "string"
+							}
+						}
+					}
+				}
+			},
+			"InboxDmErrorResponse": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/ErrorResponse"
+					},
+					{
+						"type": "object",
+						"properties": {
+							"code": {
+								"type": "string",
+								"description": "Machine-readable failure reason. PostZen's own reasons are `accountNotFound`, `conversationNotFound`, `forbidden`, `platformUnsupported`, `platformCapabilityMissing`, `connectionDead`, `idempotencyConflict`, and `idempotencyInFlight`. `PLATFORM_LIMITATION` means the platform refused a send it could accept at another time — the 24-hour window has closed, or the recipient is unavailable — rather than that the request was wrong. Other platform failures carry the platform's own error code, which for Meta is a numeric string such as `100` or `190`. Absent on plain parameter-validation errors and on PostZen's own rate-limit response."
+							},
+							"platform": {
+								"type": "string",
+								"description": "Platform the failure relates to, when PostZen could determine one."
+							},
+							"platformError": {
+								"type": "object",
+								"description": "Meta's own error envelope, passed through untouched. Fields Meta did not report are absent rather than null.",
+								"properties": {
+									"code": {
+										"type": "integer"
+									},
+									"subcode": {
+										"type": "integer"
+									},
+									"fbtraceId": {
+										"type": "string"
+									},
+									"type": {
+										"type": "string"
+									}
+								}
+							}
+						}
+					}
+				]
+			},
 			"ConnectStartResponse": {
 				"type": "object",
 				"required": [
@@ -4500,9 +9777,36 @@
 					}
 				}
 			},
+			"MediaDirectUploadResponse": {
+				"type": "object",
+				"required": [
+					"url",
+					"filename",
+					"contentType",
+					"size"
+				],
+				"properties": {
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "Publicly fetchable URL for the stored file. Pass it as `attachmentUrl` when sending a direct message."
+					},
+					"filename": {
+						"type": "string",
+						"description": "Sanitized file name the object was stored under."
+					},
+					"contentType": {
+						"type": "string"
+					},
+					"size": {
+						"type": "integer",
+						"description": "Stored size in bytes."
+					}
+				}
+			},
 			"CreatePostRequest": {
 				"type": "object",
-				"description": "Provide exactly one creation mode: `publishNow`, `scheduledFor`, or `isDraft`. `platforms` is required unless `isDraft` is true.",
+				"description": "Provide exactly one creation mode: `publishNow`, `scheduledFor`, `isDraft`, or `queuedFromProfile`. `platforms` is required unless `isDraft` is true.",
 				"properties": {
 					"title": {
 						"type": "string",
@@ -4540,9 +9844,18 @@
 						"type": "boolean",
 						"description": "Create a draft. `platforms` is optional for drafts."
 					},
+					"queuedFromProfile": {
+						"type": "string",
+						"description": "Profile id whose queue places the post. PostZen assigns the next free slot and returns it as `scheduledFor`. Do not call `GET /v1/queue/next-slot` and pass the result as `scheduledFor`: the slot is only claimed by the create call itself, so a fetched slot can be taken by another request before yours arrives, and the post would be scheduled outside the queue."
+					},
+					"queueId": {
+						"type": "string",
+						"description": "Specific queue on `queuedFromProfile`. Defaults to that profile's default queue. Requires `queuedFromProfile`."
+					},
 					"timezone": {
 						"type": "string",
-						"default": "UTC"
+						"default": "UTC",
+						"description": "Ignored in queue mode; queued posts take the queue's timezone."
 					},
 					"tags": {
 						"type": "array",
@@ -4875,6 +10188,16 @@
 					},
 					"altText": {
 						"type": "string"
+					},
+					"coverImageUrl": {
+						"type": "string",
+						"format": "uri",
+						"description": "Cover or thumbnail image URL for video pins."
+					},
+					"coverImageKeyFrameTime": {
+						"type": "number",
+						"minimum": 0,
+						"description": "Cover keyframe time in seconds for video pins, as an alternative to coverImageUrl."
 					}
 				}
 			},
@@ -4962,6 +10285,13 @@
 							"null"
 						],
 						"format": "date-time"
+					},
+					"queueId": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Queue that placed this post, or null when the post was not queued."
 					},
 					"timezone": {
 						"type": "string"
@@ -5053,6 +10383,21 @@
 							"Post scheduled successfully",
 							"Draft created successfully"
 						]
+					}
+				}
+			},
+			"UpdatePostResponse": {
+				"type": "object",
+				"required": [
+					"post",
+					"message"
+				],
+				"properties": {
+					"post": {
+						"$ref": "#/components/schemas/ApiPost"
+					},
+					"message": {
+						"type": "string"
 					}
 				}
 			},
@@ -5239,6 +10584,801 @@
 					},
 					"apiKey": {
 						"$ref": "#/components/schemas/ApiKeyWithSecret"
+					}
+				}
+			},
+			"WebhookEvent": {
+				"type": "string",
+				"enum": [
+					"post.published",
+					"post.partially_failed",
+					"post.failed",
+					"account.needs_reauth",
+					"account.disconnected",
+					"webhook.test"
+				],
+				"description": "Webhook event type. Receivers should tolerate additional event types in future API versions."
+			},
+			"WebhookDeliveryStatus": {
+				"type": "string",
+				"enum": [
+					"pending",
+					"retrying",
+					"delivered",
+					"failed"
+				]
+			},
+			"WebhookCustomHeader": {
+				"type": "object",
+				"required": [
+					"name",
+					"value"
+				],
+				"properties": {
+					"name": {
+						"type": "string",
+						"description": "HTTP header name. Content-Type, transport headers, and X-PostZen-* names are reserved."
+					},
+					"value": {
+						"type": "string",
+						"maxLength": 4096,
+						"writeOnly": true,
+						"description": "Plaintext header value. PostZen encrypts it at rest and never returns it."
+					}
+				}
+			},
+			"Webhook": {
+				"type": "object",
+				"required": [
+					"id",
+					"name",
+					"url",
+					"events",
+					"profileAccess",
+					"profileIds",
+					"hasSigningSecret",
+					"customHeaderNames",
+					"isActive",
+					"consecutiveFailures",
+					"createdAt",
+					"updatedAt"
+				],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"url": {
+						"type": "string",
+						"format": "uri"
+					},
+					"events": {
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"$ref": "#/components/schemas/WebhookEvent"
+						}
+					},
+					"profileAccess": {
+						"type": "string",
+						"enum": [
+							"all_profiles",
+							"selected_profiles"
+						]
+					},
+					"profileIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Selected profile ids. Empty when profileAccess is all_profiles."
+					},
+					"hasSigningSecret": {
+						"type": "boolean",
+						"description": "Whether PostZen signs deliveries for this endpoint. The secret itself is never returned."
+					},
+					"customHeaderNames": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Configured custom header names. Header values are never returned."
+					},
+					"isActive": {
+						"type": "boolean"
+					},
+					"disabledReason": {
+						"type": "string",
+						"enum": [
+							"auto_consecutive_failures",
+							"user_disabled"
+						]
+					},
+					"consecutiveFailures": {
+						"type": "integer",
+						"minimum": 0
+					},
+					"lastDeliveredAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"lastFailedAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"WebhookCreateRequest": {
+				"type": "object",
+				"required": [
+					"name",
+					"url",
+					"events",
+					"profileAccess"
+				],
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "Public HTTPS endpoint URL."
+					},
+					"events": {
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"$ref": "#/components/schemas/WebhookEvent"
+						}
+					},
+					"profileAccess": {
+						"type": "string",
+						"enum": [
+							"all_profiles",
+							"selected_profiles"
+						],
+						"description": "all_profiles receives events for every profile. selected_profiles requires profileIds."
+					},
+					"profileIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Required for selected_profiles and omitted or empty for all_profiles."
+					},
+					"secret": {
+						"type": [
+							"string",
+							"null"
+						],
+						"minLength": 1,
+						"maxLength": 256,
+						"writeOnly": true,
+						"description": "Optional HMAC signing secret. Omit or send null to create an unsigned endpoint."
+					},
+					"customHeaders": {
+						"type": "array",
+						"maxItems": 20,
+						"items": {
+							"$ref": "#/components/schemas/WebhookCustomHeader"
+						}
+					},
+					"isActive": {
+						"type": "boolean",
+						"default": true
+					}
+				}
+			},
+			"WebhookUpdateRequest": {
+				"type": "object",
+				"description": "Include at least one field. Omitted fields keep their stored values.",
+				"properties": {
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 80
+					},
+					"url": {
+						"type": "string",
+						"format": "uri"
+					},
+					"events": {
+						"type": "array",
+						"minItems": 1,
+						"items": {
+							"$ref": "#/components/schemas/WebhookEvent"
+						}
+					},
+					"profileAccess": {
+						"type": "string",
+						"enum": [
+							"all_profiles",
+							"selected_profiles"
+						]
+					},
+					"profileIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "Replacement profile selection. Must be non-empty for selected_profiles and empty for all_profiles."
+					},
+					"secret": {
+						"type": [
+							"string",
+							"null"
+						],
+						"minLength": 1,
+						"maxLength": 256,
+						"writeOnly": true,
+						"description": "Omit to keep the stored secret, send a non-empty string to replace it, or send null to remove it."
+					},
+					"customHeaders": {
+						"type": "array",
+						"maxItems": 20,
+						"items": {
+							"$ref": "#/components/schemas/WebhookCustomHeader"
+						},
+						"description": "Omit to keep stored headers. Send the complete collection to replace all headers, or [] to remove all headers. Every supplied value is plaintext and is encrypted at rest."
+					},
+					"isActive": {
+						"type": "boolean",
+						"description": "Enable or disable delivery. Re-enabling resets the consecutive exhausted-event count."
+					}
+				}
+			},
+			"WebhookDelivery": {
+				"type": "object",
+				"required": [
+					"event",
+					"eventId",
+					"deliveryId",
+					"resourceId",
+					"status",
+					"attemptCount",
+					"createdAt"
+				],
+				"properties": {
+					"event": {
+						"$ref": "#/components/schemas/WebhookEvent"
+					},
+					"eventId": {
+						"type": "string",
+						"description": "Stable across automatic retries and manual redeliveries."
+					},
+					"deliveryId": {
+						"type": "string"
+					},
+					"resourceId": {
+						"type": "string"
+					},
+					"status": {
+						"$ref": "#/components/schemas/WebhookDeliveryStatus"
+					},
+					"attemptCount": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Monotonic count across automatic retries and manual redeliveries."
+					},
+					"lastHttpStatus": {
+						"type": "integer",
+						"minimum": 100,
+						"maximum": 599
+					},
+					"lastErrorCode": {
+						"type": "string"
+					},
+					"lastDurationMs": {
+						"type": "number",
+						"minimum": 0
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"lastAttemptAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"deliveredAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"nextAttemptAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"WebhooksListResponse": {
+				"type": "object",
+				"required": [
+					"webhooks"
+				],
+				"properties": {
+					"webhooks": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/Webhook"
+						}
+					}
+				}
+			},
+			"WebhookResponse": {
+				"type": "object",
+				"required": [
+					"webhook"
+				],
+				"properties": {
+					"webhook": {
+						"$ref": "#/components/schemas/Webhook"
+					}
+				}
+			},
+			"WebhookWriteResponse": {
+				"type": "object",
+				"required": [
+					"message",
+					"webhook"
+				],
+				"properties": {
+					"message": {
+						"type": "string"
+					},
+					"webhook": {
+						"$ref": "#/components/schemas/Webhook"
+					}
+				}
+			},
+			"WebhookTestResponse": {
+				"type": "object",
+				"required": [
+					"message",
+					"eventId",
+					"deliveryId"
+				],
+				"properties": {
+					"message": {
+						"type": "string"
+					},
+					"eventId": {
+						"type": "string"
+					},
+					"deliveryId": {
+						"type": "string"
+					}
+				}
+			},
+			"WebhookDeliveriesListResponse": {
+				"type": "object",
+				"required": [
+					"deliveries",
+					"pagination"
+				],
+				"properties": {
+					"deliveries": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/WebhookDelivery"
+						}
+					},
+					"pagination": {
+						"$ref": "#/components/schemas/Pagination"
+					}
+				}
+			},
+			"WebhookRedeliveryResponse": {
+				"type": "object",
+				"required": [
+					"message",
+					"delivery"
+				],
+				"properties": {
+					"message": {
+						"type": "string"
+					},
+					"delivery": {
+						"$ref": "#/components/schemas/WebhookDelivery"
+					}
+				}
+			},
+			"QueueSlot": {
+				"type": "object",
+				"required": [
+					"dayOfWeek",
+					"time"
+				],
+				"properties": {
+					"dayOfWeek": {
+						"type": "integer",
+						"minimum": 0,
+						"maximum": 6,
+						"description": "Day of the week, 0 = Sunday through 6 = Saturday."
+					},
+					"time": {
+						"type": "string",
+						"pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+						"description": "24-hour wall-clock time (`HH:mm`) in the queue's timezone."
+					}
+				}
+			},
+			"QueueSchedule": {
+				"type": "object",
+				"required": [
+					"_id",
+					"profileId",
+					"name",
+					"timezone",
+					"slots",
+					"active",
+					"isDefault",
+					"createdAt",
+					"updatedAt"
+				],
+				"properties": {
+					"_id": {
+						"type": "string"
+					},
+					"profileId": {
+						"type": "string"
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 500
+					},
+					"timezone": {
+						"type": "string",
+						"description": "IANA timezone the slots are evaluated in, for example `America/Edmonton`."
+					},
+					"slots": {
+						"type": "array",
+						"maxItems": 56,
+						"items": {
+							"$ref": "#/components/schemas/QueueSlot"
+						},
+						"description": "Weekly slots, deduplicated and sorted by day then time."
+					},
+					"active": {
+						"type": "boolean",
+						"description": "Paused queues reject new queue-mode posts and report no upcoming slots."
+					},
+					"isDefault": {
+						"type": "boolean",
+						"description": "Whether this queue answers when `queueId` is omitted."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"format": "date-time"
+					}
+				}
+			},
+			"QueueScheduleWithNextSlots": {
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/QueueSchedule"
+					},
+					{
+						"type": "object",
+						"required": [
+							"nextSlots"
+						],
+						"properties": {
+							"nextSlots": {
+								"type": "array",
+								"items": {
+									"type": "string",
+									"format": "date-time"
+								}
+							}
+						}
+					}
+				]
+			},
+			"QueueScheduleResponse": {
+				"type": "object",
+				"required": [
+					"exists",
+					"schedule",
+					"nextSlots"
+				],
+				"properties": {
+					"exists": {
+						"type": "boolean",
+						"description": "False when the profile has no matching queue; `schedule` is then null."
+					},
+					"schedule": {
+						"oneOf": [
+							{
+								"$ref": "#/components/schemas/QueueSchedule"
+							},
+							{
+								"type": "null"
+							}
+						]
+					},
+					"nextSlots": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"format": "date-time"
+						},
+						"description": "Next five instants this queue would hand out, occupied slots already skipped."
+					}
+				}
+			},
+			"QueueSchedulesResponse": {
+				"type": "object",
+				"required": [
+					"exists",
+					"schedules"
+				],
+				"properties": {
+					"exists": {
+						"type": "boolean"
+					},
+					"schedules": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/QueueScheduleWithNextSlots"
+						}
+					}
+				}
+			},
+			"QueueSlotsResponse": {
+				"description": "A single schedule, or every schedule on the profile when `all=true`.",
+				"oneOf": [
+					{
+						"$ref": "#/components/schemas/QueueScheduleResponse"
+					},
+					{
+						"$ref": "#/components/schemas/QueueSchedulesResponse"
+					}
+				]
+			},
+			"QueueCreateRequest": {
+				"type": "object",
+				"required": [
+					"profileId",
+					"timezone",
+					"slots"
+				],
+				"properties": {
+					"profileId": {
+						"type": "string",
+						"description": "Profile the queue belongs to."
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100,
+						"default": "Default Queue"
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 500
+					},
+					"timezone": {
+						"type": "string",
+						"description": "IANA timezone. Rejected if unknown — queues never silently fall back to UTC."
+					},
+					"slots": {
+						"type": "array",
+						"maxItems": 56,
+						"items": {
+							"$ref": "#/components/schemas/QueueSlot"
+						},
+						"description": "Weekly slots. May be empty; a queue with no slots accepts no queued posts until slots are added."
+					},
+					"active": {
+						"type": "boolean",
+						"default": true
+					},
+					"setAsDefault": {
+						"type": "boolean",
+						"description": "Make this the profile's default queue. The first queue on a profile becomes default regardless."
+					}
+				}
+			},
+			"QueueUpdateRequest": {
+				"type": "object",
+				"required": [
+					"profileId",
+					"timezone",
+					"slots"
+				],
+				"properties": {
+					"profileId": {
+						"type": "string",
+						"description": "Profile that owns the queue."
+					},
+					"queueId": {
+						"type": "string",
+						"description": "Queue to update. Defaults to the profile's default queue."
+					},
+					"name": {
+						"type": "string",
+						"minLength": 1,
+						"maxLength": 100
+					},
+					"description": {
+						"type": "string",
+						"maxLength": 500,
+						"description": "Send an empty string to clear the description."
+					},
+					"timezone": {
+						"type": "string"
+					},
+					"slots": {
+						"type": "array",
+						"maxItems": 56,
+						"items": {
+							"$ref": "#/components/schemas/QueueSlot"
+						},
+						"description": "Replaces the queue's slots entirely."
+					},
+					"active": {
+						"type": "boolean"
+					},
+					"setAsDefault": {
+						"type": "boolean"
+					},
+					"reshuffleExisting": {
+						"type": "boolean",
+						"description": "Re-place the queue's future scheduled posts onto the new schedule. Only applies when the timezone or slots actually changed."
+					}
+				}
+			},
+			"QueueWriteResponse": {
+				"type": "object",
+				"required": [
+					"success",
+					"schedule",
+					"nextSlots"
+				],
+				"properties": {
+					"success": {
+						"type": "boolean"
+					},
+					"schedule": {
+						"$ref": "#/components/schemas/QueueSchedule"
+					},
+					"nextSlots": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"format": "date-time"
+						}
+					}
+				}
+			},
+			"QueueUpdateResponse": {
+				"type": "object",
+				"required": [
+					"success",
+					"schedule",
+					"nextSlots",
+					"reshuffledCount"
+				],
+				"properties": {
+					"success": {
+						"type": "boolean"
+					},
+					"schedule": {
+						"$ref": "#/components/schemas/QueueSchedule"
+					},
+					"nextSlots": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"format": "date-time"
+						}
+					},
+					"reshuffledCount": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "How many scheduled posts were moved onto the new schedule."
+					}
+				}
+			},
+			"QueueDeleteResponse": {
+				"type": "object",
+				"required": [
+					"success",
+					"deleted",
+					"deletedCount"
+				],
+				"properties": {
+					"success": {
+						"type": "boolean"
+					},
+					"deleted": {
+						"type": "boolean"
+					},
+					"deletedCount": {
+						"type": "integer",
+						"minimum": 1,
+						"description": "How many schedules were deleted. Always 1 when `queueId` is supplied; when it is omitted every schedule on the profile is deleted and this is that count."
+					}
+				}
+			},
+			"QueueNextSlotResponse": {
+				"type": "object",
+				"required": [
+					"profileId",
+					"nextSlot",
+					"timezone",
+					"queueId",
+					"queueName"
+				],
+				"properties": {
+					"profileId": {
+						"type": "string"
+					},
+					"nextSlot": {
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"description": "Null when every slot in the next year is already taken."
+					},
+					"timezone": {
+						"type": "string"
+					},
+					"queueId": {
+						"type": "string"
+					},
+					"queueName": {
+						"type": "string"
+					}
+				}
+			},
+			"QueuePreviewResponse": {
+				"type": "object",
+				"required": [
+					"profileId",
+					"count",
+					"slots"
+				],
+				"properties": {
+					"profileId": {
+						"type": "string"
+					},
+					"count": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Number of slots returned, which can be fewer than requested."
+					},
+					"slots": {
+						"type": "array",
+						"items": {
+							"type": "string",
+							"format": "date-time"
+						}
 					}
 				}
 			}

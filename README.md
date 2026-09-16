@@ -280,6 +280,7 @@ client.posts.create_post(
 | Method | Description |
 |--------|-------------|
 | `media.create_media_presign()` | Create a presigned media upload URL |
+| `media.upload_media_direct()` | Upload a file directly |
 
 ### Posts
 | Method | Description |
@@ -288,6 +289,10 @@ client.posts.create_post(
 | `posts.list_post_reactions()` | List reactions on a LinkedIn post |
 | `posts.list_posts()` | List posts |
 | `posts.create_post()` | Create a post |
+| `posts.get_post()` | Get a post |
+| `posts.update_post()` | Update a post |
+| `posts.delete_post()` | Delete a post |
+| `posts.bulk_upload_posts()` | Bulk upload posts from CSV |
 
 ## Requirements
 

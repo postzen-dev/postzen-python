@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ...models import (
+    MediaDirectUploadResponse,
     MediaPresignResponse,
 )
 
@@ -46,3 +47,13 @@ class MediaResource(BaseResource[Any]):
         )
         data = await self._client._apost('/v1/media/presign', data=payload)
         return MediaPresignResponse.model_validate(data)
+
+    def upload_media_direct(self) -> MediaDirectUploadResponse:
+        """Upload a file directly."""
+        data = self._client._post('/v1/media/upload-direct')
+        return MediaDirectUploadResponse.model_validate(data)
+
+    async def aupload_media_direct(self) -> MediaDirectUploadResponse:
+        """Upload a file directly (async)."""
+        data = await self._client._apost('/v1/media/upload-direct')
+        return MediaDirectUploadResponse.model_validate(data)
