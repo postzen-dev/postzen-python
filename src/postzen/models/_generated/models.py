@@ -63,17 +63,49 @@ class CommentAutomationLog(BaseModel):
     commenterId: str
     commenterName: str | None = None
     commentText: str | None = None
-    skipReason: str | None = None
+    skipReason: (
+        Literal[
+            'already_sent_to_contact',
+            'automation_inactive',
+            'not_follower',
+            'is_follower',
+            'below_min_followers',
+            'follow_status_unknown',
+        ]
+        | None
+    ) = None
     error: str | None = None
     sentMessageId: str | None = None
     commentReplyError: str | None = None
     source: Literal['comment', 'story_reply']
-    status: Literal['pending', 'sent', 'failed', 'skipped']
+    status: Annotated[
+        Literal['pending', 'sent', 'failed', 'skipped', 'gated'],
+        Field(
+            description='gated: the follow-gate confirmation DM went out and we are waiting for the tap; it flips to sent or skipped when they tap. An unsuccessful audience check keeps the gate open for another tap.'
+        ),
+    ]
     buttonsDropped: bool | None = None
     commentReplyStatus: Literal['pending', 'sent', 'failed', 'skipped'] | None = None
     nextDueAt: datetime | None = None
     createdAt: datetime
     updatedAt: datetime
+    gateMessageId: str | None = None
+    commenterIgsid: str | None = None
+    gateSentAt: Annotated[
+        float | None, Field(description='Unix timestamp in milliseconds.')
+    ] = None
+    gateTappedAt: Annotated[
+        float | None, Field(description='Unix timestamp in milliseconds.')
+    ] = None
+    gateAttempts: Annotated[int | None, Field(ge=0)] = None
+    followerCount: Annotated[int | None, Field(ge=0)] = None
+    followStatus: Literal['follower', 'non_follower', 'unknown'] | None = None
+    gateDropped: Annotated[
+        bool | None,
+        Field(
+            description='Meta rejected the postback template and delivery failed open.'
+        ),
+    ] = None
 
 
 class Pagination(BaseModel):
@@ -2627,6 +2659,45 @@ class CommentAutomationTemplate(BaseModel):
     ]
 
 
+class CommentAutomationAudience(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    followerStatus: Literal['any', 'follower', 'non_follower'] | None = 'any'
+    minFollowerCount: Annotated[
+        int | None,
+        Field(description='Omit for no size rule. Zero is stored as absent.', ge=0),
+    ] = None
+    whenUnknown: Annotated[
+        Literal['send', 'skip', 'verify'] | None,
+        Field(
+            description='What to do when Instagram will not reveal the follow relationship. `send` (default) - deliver the DM anyway (fails open). `skip` - stay silent. `verify` - send `followGate.message` with a confirm button. Tapping it is a message, which grants consent, so the re-check on the tap resolves and the real DM (or `followGate.notFollowingMessage`) follows automatically.'
+        ),
+    ] = 'send'
+
+
+class CommentAutomationFollowGate(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: Annotated[str | None, Field(max_length=640, min_length=1)] = (
+        'Follow us to get the link, then tap the button below 👇'
+    )
+    buttonLabel: Annotated[str | None, Field(max_length=20, min_length=1)] = (
+        "I'm following"
+    )
+    notFollowingMessage: Annotated[
+        str | None,
+        Field(
+            description='Sent to a commenter we know does not follow (followerStatus=follower). Omit to stay silent on a keyword comment; a confirm tap always gets an answer.',
+            max_length=1000,
+            min_length=1,
+        ),
+    ] = None
+
+
 class CommentAutomation(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -2723,6 +2794,8 @@ class CommentAutomation(BaseModel):
     stats: Stats
     createdAt: datetime
     updatedAt: datetime
+    audience: CommentAutomationAudience
+    followGate: CommentAutomationFollowGate | None = None
 
 
 class CommentAutomationCreateRequest(BaseModel):
@@ -2829,6 +2902,8 @@ class CommentAutomationCreateRequest(BaseModel):
     ] = 0
     isActive: bool | None = True
     linkTracking: Literal[False] | None = False
+    audience: CommentAutomationAudience | None = None
+    followGate: CommentAutomationFollowGate | None = None
 
 
 class CommentAutomationUpdateRequest(BaseModel):
@@ -2934,6 +3009,8 @@ class CommentAutomationUpdateRequest(BaseModel):
     ] = 0
     isActive: bool | None = True
     linkTracking: Literal[False] | None = False
+    audience: CommentAutomationAudience | None = None
+    followGate: CommentAutomationFollowGate | None = None
 
 
 class CommentAutomationListResponse(BaseModel):
