@@ -7,7 +7,7 @@ from datetime import date as date_aliased
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field, RootModel, constr
 
 
 class Keyword(RootModel[str]):
@@ -71,6 +71,8 @@ class CommentAutomationLog(BaseModel):
             'is_follower',
             'below_min_followers',
             'follow_status_unknown',
+            'contact_blocked',
+            'contact_unsubscribed',
         ]
         | None
     ) = None
@@ -2696,6 +2698,675 @@ class CommentAutomationFollowGate(BaseModel):
             min_length=1,
         ),
     ] = None
+
+
+class Tag(RootModel[str]):
+    root: Annotated[str, Field(max_length=50, min_length=1)]
+
+
+class CustomFields(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000)]
+
+
+class Contact(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+        regex_engine="python-re",
+    )
+    id: Annotated[str, Field(description='Contact id.', examples=['jd7contact123'])]
+    profileId: Annotated[
+        str,
+        Field(
+            description='Owning profile id; immutable and must be in the API key scope.',
+            examples=['jd7profile123'],
+        ),
+    ]
+    name: Annotated[
+        str,
+        Field(
+            description='Trimmed contact name, 1–200 characters.',
+            examples=['Jane Doe'],
+            max_length=200,
+            min_length=1,
+        ),
+    ]
+    email: Annotated[
+        str | None,
+        Field(
+            description='Trimmed lowercase email; unique within its profile.',
+            examples=['jane@example.com'],
+            max_length=254,
+            pattern='^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+        ),
+    ]
+    company: Annotated[
+        str | None,
+        Field(
+            description='Company name, at most 200 characters.',
+            examples=['Acme'],
+            max_length=200,
+        ),
+    ]
+    avatarUrl: Annotated[
+        str | None,
+        Field(
+            description='Public HTTPS avatar URL, canonicalized on PATCH; inbox avatars are stored as supplied by the platform.',
+            examples=['https://images.example.com/jane.jpg'],
+            max_length=2048,
+        ),
+    ]
+    tags: Annotated[
+        list[Tag],
+        Field(
+            description='At most 50 tags, trimmed and deduplicated case-insensitively, preserving original case. Send [] to clear.',
+            examples=[['VIP', 'Lead']],
+            max_length=50,
+        ),
+    ]
+    isSubscribed: Annotated[
+        bool,
+        Field(
+            description='Contact subscription state. False prevents comment automation sends.',
+            examples=[True],
+        ),
+    ]
+    isBlocked: Annotated[
+        bool,
+        Field(
+            description='Blocked contacts cannot receive comment automation sends.',
+            examples=[False],
+        ),
+    ]
+    notes: Annotated[
+        str | None,
+        Field(
+            description='Free-form notes, at most 5000 characters.',
+            examples=['Interested in the launch.'],
+            max_length=5000,
+        ),
+    ]
+    customFields: Annotated[
+        dict[
+            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            CustomFields | float | bool | None,
+        ]
+        | None,
+        Field(
+            description='At most 50 keys of 1–64 characters. Keys follow Convex record rules: printable ASCII, not starting with $ or _. Values are strings (at most 1000 characters), finite numbers, booleans, or null. PATCH replaces the entire object.',
+            examples=[{'leadScore': 42, 'customer': True}],
+            max_length=50,
+        ),
+    ]
+    messagesSentCount: Annotated[
+        int,
+        Field(
+            description='Messages sent by the connected account, including automation DMs. Counters start when Contacts ships; history is not backfilled.',
+            examples=[3],
+            ge=0,
+        ),
+    ]
+    messagesReceivedCount: Annotated[
+        int,
+        Field(
+            description='Messages received from this person since Contacts ships; re-syncing stored messages does not increment this count.',
+            examples=[5],
+            ge=0,
+        ),
+    ]
+    lastMessageSentAt: Annotated[
+        datetime | None,
+        Field(
+            description='Latest counted outbound message time, or null.',
+            examples=['2026-09-19T12:00:00.000Z'],
+        ),
+    ]
+    lastMessageReceivedAt: Annotated[
+        datetime | None,
+        Field(
+            description='Latest counted inbound message time, or null.',
+            examples=['2026-09-19T12:00:00.000Z'],
+        ),
+    ]
+    source: Annotated[
+        Literal['api', 'inbox', 'automation'],
+        Field(
+            description='How this contact first came to exist; informational and immutable.',
+            examples=['api'],
+        ),
+    ]
+    createdAt: Annotated[
+        datetime,
+        Field(
+            description='Contact creation time.', examples=['2026-09-19T12:00:00.000Z']
+        ),
+    ]
+    updatedAt: Annotated[
+        datetime,
+        Field(
+            description='Latest contact update time.',
+            examples=['2026-09-19T12:00:00.000Z'],
+        ),
+    ]
+
+
+class ContactListItem(Contact):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ]
+        | None,
+        Field(
+            description='Primary (oldest by createdAt) channel: PostZen platform. Always resolved from the connected account. Null when no channel exists.',
+            examples=['instagram'],
+        ),
+    ]
+    platformIdentifier: Annotated[
+        str | None,
+        Field(
+            description='Primary (oldest by createdAt) channel: Platform identity (IGSID, PSID, or handle), trimmed, 1–200 characters. Unique per connected account. Null when no channel exists.',
+            examples=['178414000001'],
+            max_length=200,
+            min_length=1,
+        ),
+    ]
+    displayIdentifier: Annotated[
+        str | None,
+        Field(
+            description='Primary (oldest by createdAt) channel: Optional username or friendly handle, at most 200 characters. Null when no channel exists.',
+            examples=['@jane'],
+            max_length=200,
+        ),
+    ]
+    channelCount: Annotated[
+        int,
+        Field(
+            description='Number of channels belonging to this contact.',
+            examples=[1],
+            ge=0,
+            le=20,
+        ),
+    ]
+
+
+class Metadata(RootModel[str]):
+    root: Annotated[str, Field(max_length=1000)]
+
+
+class ContactChannel(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+        regex_engine="python-re",
+    )
+    id: Annotated[
+        str, Field(description='Contact channel id.', examples=['jd7channel123'])
+    ]
+    contactId: Annotated[
+        str,
+        Field(description='Contact owning this channel.', examples=['jd7contact123']),
+    ]
+    accountId: Annotated[
+        str,
+        Field(
+            description='Connected account id; must belong to the same profile and caller.',
+            examples=['jd7account123'],
+        ),
+    ]
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ],
+        Field(
+            description='PostZen platform. Always resolved from the connected account.',
+            examples=['instagram'],
+        ),
+    ]
+    platformIdentifier: Annotated[
+        str,
+        Field(
+            description='Platform identity (IGSID, PSID, or handle), trimmed, 1–200 characters. Unique per connected account.',
+            examples=['178414000001'],
+            max_length=200,
+            min_length=1,
+        ),
+    ]
+    displayIdentifier: Annotated[
+        str | None,
+        Field(
+            description='Optional username or friendly handle, at most 200 characters.',
+            examples=['@jane'],
+            max_length=200,
+        ),
+    ]
+    isSubscribed: Annotated[
+        bool,
+        Field(
+            description='Channel opt-in. False prevents comment automation sends on this channel.',
+            examples=[True],
+        ),
+    ]
+    conversationId: Annotated[
+        str | None,
+        Field(
+            description='Platform conversation id when known; not the PostZen inbox document id.',
+            examples=['t_12345'],
+        ),
+    ]
+    metadata: Annotated[
+        dict[
+            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            Metadata | float | bool | None,
+        ]
+        | None,
+        Field(
+            description='Optional platform facts; same key and scalar value limits as customFields.',
+            examples=[{'locale': 'en'}],
+            max_length=50,
+        ),
+    ]
+    lastActiveAt: Annotated[
+        datetime | None,
+        Field(
+            description='Latest counted message time on this channel.',
+            examples=['2026-09-19T12:00:00.000Z'],
+        ),
+    ]
+    createdAt: Annotated[
+        datetime,
+        Field(
+            description='Channel creation time.', examples=['2026-09-19T12:00:00.000Z']
+        ),
+    ]
+
+
+class ContactCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+        regex_engine="python-re",
+    )
+    profileId: Annotated[
+        str,
+        Field(
+            description='Owning profile id; immutable and must be in the API key scope.',
+            examples=['jd7profile123'],
+        ),
+    ]
+    name: Annotated[
+        str,
+        Field(
+            description='Trimmed contact name, 1–200 characters.',
+            examples=['Jane Doe'],
+            max_length=200,
+            min_length=1,
+        ),
+    ]
+    email: Annotated[
+        str | None,
+        Field(
+            description='Trimmed lowercase email; unique within its profile.',
+            examples=['jane@example.com'],
+            max_length=254,
+            pattern='^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+        ),
+    ] = None
+    company: Annotated[
+        str | None,
+        Field(
+            description='Company name, at most 200 characters.',
+            examples=['Acme'],
+            max_length=200,
+        ),
+    ] = None
+    tags: Annotated[
+        list[Tag] | None,
+        Field(
+            description='At most 50 tags, trimmed and deduplicated case-insensitively, preserving original case. Send [] to clear.',
+            examples=[['VIP', 'Lead']],
+            max_length=50,
+        ),
+    ] = None
+    isSubscribed: Annotated[
+        bool | None,
+        Field(
+            description='Contact subscription state. False prevents comment automation sends.',
+            examples=[True],
+        ),
+    ] = True
+    notes: Annotated[
+        str | None,
+        Field(
+            description='Free-form notes, at most 5000 characters.',
+            examples=['Interested in the launch.'],
+            max_length=5000,
+        ),
+    ] = None
+    customFields: Annotated[
+        dict[
+            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            CustomFields | float | bool | None,
+        ]
+        | None,
+        Field(
+            description='At most 50 keys of 1–64 characters. Keys follow Convex record rules: printable ASCII, not starting with $ or _. Values are strings (at most 1000 characters), finite numbers, booleans, or null. PATCH replaces the entire object.',
+            examples=[{'leadScore': 42, 'customer': True}],
+            max_length=50,
+        ),
+    ] = None
+    accountId: Annotated[
+        str | None,
+        Field(
+            description='Connected account id; must belong to the same profile and caller.',
+            examples=['jd7account123'],
+        ),
+    ] = None
+    platformIdentifier: Annotated[
+        str | None,
+        Field(
+            description='Platform identity (IGSID, PSID, or handle), trimmed, 1–200 characters. Unique per connected account.',
+            examples=['178414000001'],
+            max_length=200,
+            min_length=1,
+        ),
+    ] = None
+    displayIdentifier: Annotated[
+        str | None,
+        Field(
+            description='Optional username or friendly handle, at most 200 characters. Without a channel it is ignored and a warning is returned.',
+            examples=['@jane'],
+            max_length=200,
+        ),
+    ] = None
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ]
+        | None,
+        Field(
+            description='Optional assertion of the account platform. Must equal account.platform; requires accountId and platformIdentifier.',
+            examples=['instagram'],
+        ),
+    ] = None
+
+
+class ContactUpdateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+        regex_engine="python-re",
+    )
+    name: Annotated[
+        str | None,
+        Field(
+            description='Trimmed contact name, 1–200 characters.',
+            examples=['Jane Doe'],
+            max_length=200,
+            min_length=1,
+        ),
+    ] = None
+    email: Annotated[
+        str | None,
+        Field(
+            description='Trimmed lowercase email; unique within its profile. Send null to clear.',
+            examples=['jane@example.com'],
+            max_length=254,
+            pattern='^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+        ),
+    ] = None
+    company: Annotated[
+        str | None,
+        Field(
+            description='Company name, at most 200 characters. Send null to clear.',
+            examples=['Acme'],
+            max_length=200,
+        ),
+    ] = None
+    avatarUrl: Annotated[
+        str | None,
+        Field(
+            description='Public HTTPS avatar URL, canonicalized on PATCH; inbox avatars are stored as supplied by the platform. Send null to clear.',
+            examples=['https://images.example.com/jane.jpg'],
+            max_length=2048,
+        ),
+    ] = None
+    tags: Annotated[
+        list[Tag] | None,
+        Field(
+            description='At most 50 tags, trimmed and deduplicated case-insensitively, preserving original case. Send [] to clear.',
+            examples=[['VIP', 'Lead']],
+            max_length=50,
+        ),
+    ] = None
+    isSubscribed: Annotated[
+        bool | None,
+        Field(
+            description='Contact subscription state. False prevents comment automation sends.',
+            examples=[True],
+        ),
+    ] = True
+    isBlocked: Annotated[
+        bool | None,
+        Field(
+            description='Blocked contacts cannot receive comment automation sends.',
+            examples=[False],
+        ),
+    ] = False
+    notes: Annotated[
+        str | None,
+        Field(
+            description='Free-form notes, at most 5000 characters. Send null to clear.',
+            examples=['Interested in the launch.'],
+            max_length=5000,
+        ),
+    ] = None
+    customFields: Annotated[
+        dict[
+            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            CustomFields | float | bool | None,
+        ]
+        | None,
+        Field(
+            description='At most 50 keys of 1–64 characters. Keys follow Convex record rules: printable ASCII, not starting with $ or _. Values are strings (at most 1000 characters), finite numbers, booleans, or null. PATCH replaces the entire object. Send null to clear.',
+            examples=[{'leadScore': 42, 'customer': True}],
+            max_length=50,
+        ),
+    ] = None
+
+
+class ContactBulkCreateRow(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+        regex_engine="python-re",
+    )
+    name: Annotated[
+        str,
+        Field(
+            description='Trimmed contact name, 1–200 characters.',
+            examples=['Jane Doe'],
+            max_length=200,
+            min_length=1,
+        ),
+    ]
+    email: Annotated[
+        str | None,
+        Field(
+            description='Trimmed lowercase email; unique within its profile.',
+            examples=['jane@example.com'],
+            max_length=254,
+            pattern='^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$',
+        ),
+    ] = None
+    company: Annotated[
+        str | None,
+        Field(
+            description='Company name, at most 200 characters.',
+            examples=['Acme'],
+            max_length=200,
+        ),
+    ] = None
+    tags: Annotated[
+        list[Tag] | None,
+        Field(
+            description='At most 50 tags, trimmed and deduplicated case-insensitively, preserving original case. Send [] to clear.',
+            examples=[['VIP', 'Lead']],
+            max_length=50,
+        ),
+    ] = None
+    isSubscribed: Annotated[
+        bool | None,
+        Field(
+            description='Contact subscription state. False prevents comment automation sends.',
+            examples=[True],
+        ),
+    ] = True
+    notes: Annotated[
+        str | None,
+        Field(
+            description='Free-form notes, at most 5000 characters.',
+            examples=['Interested in the launch.'],
+            max_length=5000,
+        ),
+    ] = None
+    customFields: Annotated[
+        dict[
+            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            CustomFields | float | bool | None,
+        ]
+        | None,
+        Field(
+            description='At most 50 keys of 1–64 characters. Keys follow Convex record rules: printable ASCII, not starting with $ or _. Values are strings (at most 1000 characters), finite numbers, booleans, or null. PATCH replaces the entire object.',
+            examples=[{'leadScore': 42, 'customer': True}],
+            max_length=50,
+        ),
+    ] = None
+    platformIdentifier: Annotated[
+        str | None,
+        Field(
+            description='Required when the bulk envelope has accountId. Supplying an identity without an envelope accountId is a per-row error.',
+            examples=['178414000001'],
+            max_length=200,
+            min_length=1,
+        ),
+    ] = None
+    displayIdentifier: Annotated[
+        str | None,
+        Field(
+            description='Optional username or friendly handle, at most 200 characters. Without a channel it is ignored and a warning is returned.',
+            examples=['@jane'],
+            max_length=200,
+        ),
+    ] = None
+
+
+class ContactBulkCreateRequest(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    profileId: Annotated[
+        str,
+        Field(
+            description='Owning profile id; immutable and must be in the API key scope.',
+            examples=['jd7profile123'],
+        ),
+    ]
+    accountId: Annotated[
+        str | None,
+        Field(
+            description='Connected account id; must belong to the same profile and caller.',
+            examples=['jd7account123'],
+        ),
+    ] = None
+    platform: Annotated[
+        str | None,
+        Field(
+            description='Ignored when accountId is supplied. Without accountId, this field is rejected with 400 validation; platform disambiguation is not supported.',
+            examples=['instagram'],
+        ),
+    ] = None
+    contacts: Annotated[
+        list[ContactBulkCreateRow],
+        Field(
+            description='Rows to process in one mutation. Row validation errors are reported individually.',
+            examples=[[{'name': 'Jane Doe', 'email': 'jane@example.com'}]],
+            max_length=1000,
+            min_length=1,
+        ),
+    ]
+
+
+class ContactBulkCreateResponse(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: Annotated[
+        str,
+        Field(
+            description='Import outcome summary.',
+            examples=['Contacts imported successfully'],
+        ),
+    ]
+    created: Annotated[
+        int, Field(description='Number of newly created contacts.', examples=[1], ge=0)
+    ]
+    skipped: Annotated[
+        int,
+        Field(
+            description='Number of duplicate contacts skipped, with tags merged.',
+            examples=[1],
+            ge=0,
+        ),
+    ]
+    errors: Annotated[
+        list[str],
+        Field(
+            description='Per-row errors using 1-based row numbers.',
+            examples=[['row 3: name is required']],
+        ),
+    ]
+    total: Annotated[
+        int,
+        Field(
+            description='Number of submitted rows; equals created + skipped + errors.length.',
+            examples=[3],
+            ge=1,
+            le=1000,
+        ),
+    ]
 
 
 class CommentAutomation(BaseModel):

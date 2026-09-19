@@ -46,6 +46,10 @@
 			"description": "Instagram comment and story reply automations with private replies and delivery logs."
 		},
 		{
+			"name": "Contacts",
+			"description": "Profile-owned people from the API, inbox, and comment automations. Maximum 5000 contacts per user and 20 channels per contact. Message counters start when Contacts ships; historical messages are not backfilled."
+		},
+		{
 			"name": "Queues",
 			"description": "Manage per-profile posting queues. A queue is a named weekly schedule (`slots` of `{ dayOfWeek, time }`) evaluated in the queue's own timezone. A profile may hold several queues and exactly one is the default. Creating a post with `queuedFromProfile` claims the next free slot inside a single transaction, which is what keeps concurrent creates from landing on the same instant."
 		},
@@ -5743,6 +5747,863 @@
 				}
 			}
 		},
+		"/v1/contacts": {
+			"get": {
+				"tags": [
+					"Contacts"
+				],
+				"operationId": "listContacts",
+				"summary": "List contacts",
+				"description": "Returns contacts in the API key scope, newest first. Requires read_only. Search matches name, email or company. Tag filters use any match. Account and platform filters use contact channels. filters.tags always covers the unfiltered in-scope set. Reads use the plan per-minute budget.",
+				"responses": {
+					"200": {
+						"description": "List contacts.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"contacts": {
+											"type": "array",
+											"description": "Filtered contacts ordered by createdAt descending, then creation order descending.",
+											"example": [
+												{
+													"id": "jd7contact123",
+													"profileId": "jd7profile123",
+													"name": "Jane Doe",
+													"email": "jane@example.com",
+													"company": "Acme",
+													"avatarUrl": "https://images.example.com/jane.jpg",
+													"tags": [
+														"VIP",
+														"Lead"
+													],
+													"isSubscribed": true,
+													"isBlocked": false,
+													"notes": "Interested in the launch.",
+													"customFields": {
+														"leadScore": 42,
+														"customer": true
+													},
+													"messagesSentCount": 3,
+													"messagesReceivedCount": 5,
+													"lastMessageSentAt": "2026-09-19T12:00:00.000Z",
+													"lastMessageReceivedAt": "2026-09-19T12:00:00.000Z",
+													"source": "api",
+													"createdAt": "2026-09-19T12:00:00.000Z",
+													"updatedAt": "2026-09-19T12:00:00.000Z",
+													"platform": "instagram",
+													"platformIdentifier": "178414000001",
+													"displayIdentifier": "@jane",
+													"channelCount": 1
+												}
+											],
+											"items": {
+												"$ref": "#/components/schemas/ContactListItem"
+											}
+										},
+										"filters": {
+											"type": "object",
+											"properties": {
+												"tags": {
+													"type": "array",
+													"description": "Distinct tags across all unfiltered in-scope contacts, sorted and deduplicated case-insensitively.",
+													"example": [
+														"Lead",
+														"VIP"
+													],
+													"items": {
+														"type": "string"
+													}
+												}
+											},
+											"required": [
+												"tags"
+											],
+											"description": "Available filter values before applying any query filters.",
+											"example": {
+												"tags": [
+													"Lead",
+													"VIP"
+												]
+											}
+										},
+										"pagination": {
+											"type": "object",
+											"properties": {
+												"total": {
+													"type": "integer",
+													"description": "Total filtered contact count before pagination.",
+													"example": 1,
+													"minimum": 0
+												},
+												"limit": {
+													"type": "integer",
+													"description": "Requested page size.",
+													"example": 50,
+													"minimum": 1,
+													"maximum": 200
+												},
+												"skip": {
+													"type": "integer",
+													"description": "Number of matching contacts skipped.",
+													"example": 0,
+													"minimum": 0
+												},
+												"hasMore": {
+													"type": "boolean",
+													"description": "Whether more matching contacts remain after this page.",
+													"example": false
+												}
+											},
+											"required": [
+												"total",
+												"limit",
+												"skip",
+												"hasMore"
+											],
+											"description": "Offset pagination over the filtered set.",
+											"example": {
+												"total": 1,
+												"limit": 50,
+												"skip": 0,
+												"hasMore": false
+											}
+										}
+									},
+									"required": [
+										"contacts",
+										"filters",
+										"pagination"
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				},
+				"parameters": [
+					{
+						"name": "profileId",
+						"in": "query",
+						"required": false,
+						"description": "Owning profile id; immutable and must be in the API key scope.",
+						"schema": {
+							"type": "string",
+							"description": "Owning profile id; immutable and must be in the API key scope.",
+							"example": "jd7profile123"
+						},
+						"example": "jd7profile123"
+					},
+					{
+						"name": "accountId",
+						"in": "query",
+						"required": false,
+						"description": "Connected account id; must belong to the same profile and caller.",
+						"schema": {
+							"type": "string",
+							"description": "Connected account id; must belong to the same profile and caller.",
+							"example": "jd7account123"
+						},
+						"example": "jd7account123"
+					},
+					{
+						"name": "search",
+						"in": "query",
+						"required": false,
+						"description": "Case-insensitive substring search across name, email and company.",
+						"schema": {
+							"type": "string",
+							"description": "Case-insensitive substring search across name, email and company.",
+							"example": "jane"
+						},
+						"example": "jane"
+					},
+					{
+						"name": "tag",
+						"in": "query",
+						"required": false,
+						"description": "Match this tag case-insensitively; combined with tags using any-match semantics.",
+						"schema": {
+							"type": "string",
+							"description": "Match this tag case-insensitively; combined with tags using any-match semantics.",
+							"example": "VIP"
+						},
+						"example": "VIP"
+					},
+					{
+						"name": "tags",
+						"in": "query",
+						"required": false,
+						"description": "Comma-separated tags; a contact matching any supplied tag is included.",
+						"schema": {
+							"type": "string",
+							"description": "Comma-separated tags; a contact matching any supplied tag is included.",
+							"example": "VIP,Lead"
+						},
+						"example": "VIP,Lead"
+					},
+					{
+						"name": "platform",
+						"in": "query",
+						"required": false,
+						"description": "PostZen platform. Always resolved from the connected account.",
+						"schema": {
+							"type": "string",
+							"description": "PostZen platform. Always resolved from the connected account.",
+							"example": "instagram",
+							"enum": [
+								"x",
+								"instagram",
+								"tiktok",
+								"linkedin",
+								"facebook",
+								"youtube",
+								"threads",
+								"pinterest",
+								"bluesky",
+								"telegram"
+							]
+						},
+						"example": "instagram"
+					},
+					{
+						"name": "isSubscribed",
+						"in": "query",
+						"required": false,
+						"description": "Filter by contact subscription state.",
+						"schema": {
+							"type": "string",
+							"description": "Filter by contact subscription state.",
+							"example": "true",
+							"enum": [
+								"true",
+								"false"
+							]
+						},
+						"example": "true"
+					},
+					{
+						"name": "limit",
+						"in": "query",
+						"required": false,
+						"description": "Page size, an integer from 1 to 200; invalid values return 400.",
+						"schema": {
+							"type": "integer",
+							"description": "Page size, an integer from 1 to 200; invalid values return 400.",
+							"example": 50,
+							"default": 50,
+							"minimum": 1,
+							"maximum": 200
+						},
+						"example": 50
+					},
+					{
+						"name": "skip",
+						"in": "query",
+						"required": false,
+						"description": "Number of matching rows to skip, a nonnegative integer.",
+						"schema": {
+							"type": "integer",
+							"description": "Number of matching rows to skip, a nonnegative integer.",
+							"example": 0,
+							"default": 0,
+							"minimum": 0
+						},
+						"example": 0
+					}
+				]
+			},
+			"post": {
+				"tags": [
+					"Contacts"
+				],
+				"operationId": "createContact",
+				"summary": "Create a contact",
+				"description": "Requires read_write. Limited to 600 creates/hour/user. Creates a contact and optionally its first channel. Maximum 5000 contacts per user and 20 channels per contact. Unknown accounts return 404 accountNotFound; accounts in another profile or platform mismatches return 400 validation. Out-of-scope profiles return 403 forbidden.",
+				"responses": {
+					"201": {
+						"description": "Create a contact.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"message": {
+											"type": "string",
+											"description": "Operation confirmation.",
+											"example": "Contact created successfully"
+										},
+										"contact": {
+											"$ref": "#/components/schemas/Contact",
+											"description": "Contact details.",
+											"example": {
+												"id": "jd7contact123",
+												"profileId": "jd7profile123",
+												"name": "Jane Doe",
+												"email": "jane@example.com",
+												"company": "Acme",
+												"avatarUrl": "https://images.example.com/jane.jpg",
+												"tags": [
+													"VIP",
+													"Lead"
+												],
+												"isSubscribed": true,
+												"isBlocked": false,
+												"notes": "Interested in the launch.",
+												"customFields": {
+													"leadScore": 42,
+													"customer": true
+												},
+												"messagesSentCount": 3,
+												"messagesReceivedCount": 5,
+												"lastMessageSentAt": "2026-09-19T12:00:00.000Z",
+												"lastMessageReceivedAt": "2026-09-19T12:00:00.000Z",
+												"source": "api",
+												"createdAt": "2026-09-19T12:00:00.000Z",
+												"updatedAt": "2026-09-19T12:00:00.000Z"
+											}
+										},
+										"channel": {
+											"$ref": "#/components/schemas/ContactChannel",
+											"description": "First channel, included only when created.",
+											"example": {
+												"id": "jd7channel123",
+												"contactId": "jd7contact123",
+												"accountId": "jd7account123",
+												"platform": "instagram",
+												"platformIdentifier": "178414000001",
+												"displayIdentifier": "@jane",
+												"isSubscribed": true,
+												"conversationId": "t_12345",
+												"metadata": {
+													"locale": "en"
+												},
+												"lastActiveAt": "2026-09-19T12:00:00.000Z",
+												"createdAt": "2026-09-19T12:00:00.000Z"
+											}
+										},
+										"warning": {
+											"type": "string",
+											"description": "Included only when displayIdentifier was supplied without a channel.",
+											"example": "displayIdentifier ignored: no channel was created"
+										}
+									},
+									"required": [
+										"message",
+										"contact"
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"409": {
+						"description": "duplicateContact: email exists in this profile; duplicateChannel: identity exists on this account; limitReached: 5000 contacts per user.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ContactCreateRequest"
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/contacts/bulk": {
+			"post": {
+				"tags": [
+					"Contacts"
+				],
+				"operationId": "bulkCreateContacts",
+				"summary": "Bulk create contacts",
+				"description": "Requires read_write. Limited to 20 imports/hour/user. Runs as one mutation. Processes 1–1000 rows with individual errors; duplicate channel or profile email skips the row and merges only tags. Remaining rows fail once the contact cap is reached. platform is ignored with accountId and rejected without it. Envelope profile/account errors fail the request.",
+				"responses": {
+					"200": {
+						"description": "Bulk create contacts.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ContactBulkCreateResponse"
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ContactBulkCreateRequest"
+							}
+						}
+					}
+				}
+			}
+		},
+		"/v1/contacts/{contactId}": {
+			"get": {
+				"tags": [
+					"Contacts"
+				],
+				"operationId": "getContact",
+				"summary": "Get a contact",
+				"description": "Requires read_only. Returns the contact with distinct conversationIds and channels, oldest first. Unknown or out-of-scope ids return 404 contactNotFound. Counters start when Contacts ships; history is not backfilled.",
+				"responses": {
+					"200": {
+						"description": "Get a contact.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"contact": {
+											"allOf": [
+												{
+													"$ref": "#/components/schemas/Contact"
+												},
+												{
+													"type": "object",
+													"properties": {
+														"conversationIds": {
+															"type": "array",
+															"description": "Distinct non-null platform conversation ids across the channels.",
+															"example": [
+																"t_12345"
+															],
+															"items": {
+																"type": "string"
+															}
+														}
+													},
+													"required": [
+														"conversationIds"
+													]
+												}
+											],
+											"description": "Contact details with conversation ids and updatedAt.",
+											"example": {
+												"id": "jd7contact123",
+												"profileId": "jd7profile123",
+												"name": "Jane Doe",
+												"email": "jane@example.com",
+												"company": "Acme",
+												"avatarUrl": "https://images.example.com/jane.jpg",
+												"tags": [
+													"VIP",
+													"Lead"
+												],
+												"isSubscribed": true,
+												"isBlocked": false,
+												"notes": "Interested in the launch.",
+												"customFields": {
+													"leadScore": 42,
+													"customer": true
+												},
+												"messagesSentCount": 3,
+												"messagesReceivedCount": 5,
+												"lastMessageSentAt": "2026-09-19T12:00:00.000Z",
+												"lastMessageReceivedAt": "2026-09-19T12:00:00.000Z",
+												"source": "api",
+												"createdAt": "2026-09-19T12:00:00.000Z",
+												"updatedAt": "2026-09-19T12:00:00.000Z",
+												"conversationIds": [
+													"t_12345"
+												]
+											}
+										},
+										"channels": {
+											"type": "array",
+											"description": "Channels ordered oldest first by createdAt.",
+											"example": [
+												{
+													"id": "jd7channel123",
+													"contactId": "jd7contact123",
+													"accountId": "jd7account123",
+													"platform": "instagram",
+													"platformIdentifier": "178414000001",
+													"displayIdentifier": "@jane",
+													"isSubscribed": true,
+													"conversationId": "t_12345",
+													"metadata": {
+														"locale": "en"
+													},
+													"lastActiveAt": "2026-09-19T12:00:00.000Z",
+													"createdAt": "2026-09-19T12:00:00.000Z"
+												}
+											],
+											"items": {
+												"$ref": "#/components/schemas/ContactChannel"
+											},
+											"maxItems": 20
+										}
+									},
+									"required": [
+										"contact",
+										"channels"
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				},
+				"parameters": [
+					{
+						"name": "contactId",
+						"in": "path",
+						"required": true,
+						"description": "Contact owning this channel.",
+						"schema": {
+							"type": "string",
+							"description": "Contact owning this channel.",
+							"example": "jd7contact123"
+						},
+						"example": "jd7contact123"
+					}
+				]
+			},
+			"patch": {
+				"tags": [
+					"Contacts"
+				],
+				"operationId": "updateContact",
+				"summary": "Update a contact",
+				"description": "Requires read_write. Limited to 600 updates/hour/user. Supports partial updates, null clears for email, company, avatarUrl, notes and customFields, and [] to clear tags. customFields replaces the entire object. profileId and channel fields cannot be changed. Unknown or out-of-scope ids return 404 contactNotFound.",
+				"responses": {
+					"200": {
+						"description": "Update a contact.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"message": {
+											"type": "string",
+											"description": "Operation confirmation.",
+											"example": "Contact updated successfully"
+										},
+										"contact": {
+											"$ref": "#/components/schemas/Contact",
+											"description": "Contact details.",
+											"example": {
+												"id": "jd7contact123",
+												"profileId": "jd7profile123",
+												"name": "Jane Doe",
+												"email": "jane@example.com",
+												"company": "Acme",
+												"avatarUrl": "https://images.example.com/jane.jpg",
+												"tags": [
+													"VIP",
+													"Lead"
+												],
+												"isSubscribed": true,
+												"isBlocked": false,
+												"notes": "Interested in the launch.",
+												"customFields": {
+													"leadScore": 42,
+													"customer": true
+												},
+												"messagesSentCount": 3,
+												"messagesReceivedCount": 5,
+												"lastMessageSentAt": "2026-09-19T12:00:00.000Z",
+												"lastMessageReceivedAt": "2026-09-19T12:00:00.000Z",
+												"source": "api",
+												"createdAt": "2026-09-19T12:00:00.000Z",
+												"updatedAt": "2026-09-19T12:00:00.000Z"
+											}
+										}
+									},
+									"required": [
+										"message",
+										"contact"
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					},
+					"409": {
+						"description": "duplicateContact: email already belongs to another contact in the same profile.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"$ref": "#/components/schemas/ErrorResponse"
+								}
+							}
+						}
+					}
+				},
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/ContactUpdateRequest"
+							}
+						}
+					}
+				},
+				"parameters": [
+					{
+						"name": "contactId",
+						"in": "path",
+						"required": true,
+						"description": "Contact owning this channel.",
+						"schema": {
+							"type": "string",
+							"description": "Contact owning this channel.",
+							"example": "jd7contact123"
+						},
+						"example": "jd7contact123"
+					}
+				]
+			},
+			"delete": {
+				"tags": [
+					"Contacts"
+				],
+				"operationId": "deleteContact",
+				"summary": "Delete a contact",
+				"description": "Requires read_write. Limited to 300 deletes/hour/user. Atomically deletes the contact and all its channels (maximum 20). Unknown or out-of-scope ids return 404 contactNotFound.",
+				"responses": {
+					"200": {
+						"description": "Delete a contact.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"message": {
+											"type": "string",
+											"description": "Operation confirmation.",
+											"example": "Contact deleted successfully"
+										}
+									},
+									"required": [
+										"message"
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				},
+				"parameters": [
+					{
+						"name": "contactId",
+						"in": "path",
+						"required": true,
+						"description": "Contact owning this channel.",
+						"schema": {
+							"type": "string",
+							"description": "Contact owning this channel.",
+							"example": "jd7contact123"
+						},
+						"example": "jd7contact123"
+					}
+				]
+			}
+		},
+		"/v1/contacts/{contactId}/channels": {
+			"get": {
+				"tags": [
+					"Contacts"
+				],
+				"operationId": "getContactChannels",
+				"summary": "Get contact channels",
+				"description": "Requires read_only. Returns all channels oldest first by createdAt, including lastActiveAt. Unknown or out-of-scope contacts return 404 contactNotFound.",
+				"responses": {
+					"200": {
+						"description": "Get contact channels.",
+						"content": {
+							"application/json": {
+								"schema": {
+									"type": "object",
+									"properties": {
+										"channels": {
+											"type": "array",
+											"description": "Channels ordered oldest first by createdAt.",
+											"example": [
+												{
+													"id": "jd7channel123",
+													"contactId": "jd7contact123",
+													"accountId": "jd7account123",
+													"platform": "instagram",
+													"platformIdentifier": "178414000001",
+													"displayIdentifier": "@jane",
+													"isSubscribed": true,
+													"conversationId": "t_12345",
+													"metadata": {
+														"locale": "en"
+													},
+													"lastActiveAt": "2026-09-19T12:00:00.000Z",
+													"createdAt": "2026-09-19T12:00:00.000Z"
+												}
+											],
+											"items": {
+												"$ref": "#/components/schemas/ContactChannel"
+											},
+											"maxItems": 20
+										}
+									},
+									"required": [
+										"channels"
+									]
+								}
+							}
+						}
+					},
+					"400": {
+						"$ref": "#/components/responses/BadRequest"
+					},
+					"401": {
+						"$ref": "#/components/responses/Unauthorized"
+					},
+					"403": {
+						"$ref": "#/components/responses/Forbidden"
+					},
+					"404": {
+						"$ref": "#/components/responses/NotFound"
+					},
+					"429": {
+						"$ref": "#/components/responses/TooManyRequests"
+					},
+					"500": {
+						"$ref": "#/components/responses/InternalError"
+					}
+				},
+				"parameters": [
+					{
+						"name": "contactId",
+						"in": "path",
+						"required": true,
+						"description": "Contact owning this channel.",
+						"schema": {
+							"type": "string",
+							"description": "Contact owning this channel.",
+							"example": "jd7contact123"
+						},
+						"example": "jd7contact123"
+					}
+				]
+			}
+		},
 		"/v1/webhooks": {
 			"get": {
 				"tags": [
@@ -6933,7 +7794,9 @@
 							"not_follower",
 							"is_follower",
 							"below_min_followers",
-							"follow_status_unknown"
+							"follow_status_unknown",
+							"contact_blocked",
+							"contact_unsubscribed"
 						]
 					},
 					"error": {
@@ -11597,6 +12460,821 @@
 						"description": "Sent to a commenter we know does not follow (followerStatus=follower). Omit to stay silent on a keyword comment; a confirm tap always gets an answer."
 					}
 				}
+			},
+			"Contact": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Contact id.",
+						"example": "jd7contact123"
+					},
+					"profileId": {
+						"type": "string",
+						"description": "Owning profile id; immutable and must be in the API key scope.",
+						"example": "jd7profile123"
+					},
+					"name": {
+						"type": "string",
+						"description": "Trimmed contact name, 1–200 characters.",
+						"example": "Jane Doe",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"email": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Trimmed lowercase email; unique within its profile.",
+						"example": "jane@example.com",
+						"maxLength": 254,
+						"pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+					},
+					"company": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Company name, at most 200 characters.",
+						"example": "Acme",
+						"maxLength": 200
+					},
+					"avatarUrl": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Public HTTPS avatar URL, canonicalized on PATCH; inbox avatars are stored as supplied by the platform.",
+						"example": "https://images.example.com/jane.jpg",
+						"format": "uri",
+						"maxLength": 2048
+					},
+					"tags": {
+						"type": "array",
+						"description": "At most 50 tags, trimmed and deduplicated case-insensitively, preserving original case. Send [] to clear.",
+						"example": [
+							"VIP",
+							"Lead"
+						],
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 50
+						},
+						"maxItems": 50
+					},
+					"isSubscribed": {
+						"type": "boolean",
+						"description": "Contact subscription state. False prevents comment automation sends.",
+						"example": true,
+						"default": true
+					},
+					"isBlocked": {
+						"type": "boolean",
+						"description": "Blocked contacts cannot receive comment automation sends.",
+						"example": false,
+						"default": false
+					},
+					"notes": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Free-form notes, at most 5000 characters.",
+						"example": "Interested in the launch.",
+						"maxLength": 5000
+					},
+					"customFields": {
+						"type": [
+							"object",
+							"null"
+						],
+						"description": "At most 50 keys of 1–64 characters. Keys follow Convex record rules: printable ASCII, not starting with $ or _. Values are strings (at most 1000 characters), finite numbers, booleans, or null. PATCH replaces the entire object.",
+						"example": {
+							"leadScore": 42,
+							"customer": true
+						},
+						"maxProperties": 50,
+						"propertyNames": {
+							"minLength": 1,
+							"maxLength": 64,
+							"pattern": "^(?![$_])[\\x20-\\x7e]+$"
+						},
+						"additionalProperties": {
+							"oneOf": [
+								{
+									"type": "string",
+									"maxLength": 1000
+								},
+								{
+									"type": "number"
+								},
+								{
+									"type": "boolean"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					},
+					"messagesSentCount": {
+						"type": "integer",
+						"description": "Messages sent by the connected account, including automation DMs. Counters start when Contacts ships; history is not backfilled.",
+						"example": 3,
+						"minimum": 0
+					},
+					"messagesReceivedCount": {
+						"type": "integer",
+						"description": "Messages received from this person since Contacts ships; re-syncing stored messages does not increment this count.",
+						"example": 5,
+						"minimum": 0
+					},
+					"lastMessageSentAt": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Latest counted outbound message time, or null.",
+						"example": "2026-09-19T12:00:00.000Z",
+						"format": "date-time"
+					},
+					"lastMessageReceivedAt": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Latest counted inbound message time, or null.",
+						"example": "2026-09-19T12:00:00.000Z",
+						"format": "date-time"
+					},
+					"source": {
+						"type": "string",
+						"description": "How this contact first came to exist; informational and immutable.",
+						"example": "api",
+						"enum": [
+							"api",
+							"inbox",
+							"automation"
+						]
+					},
+					"createdAt": {
+						"type": "string",
+						"description": "Contact creation time.",
+						"example": "2026-09-19T12:00:00.000Z",
+						"format": "date-time"
+					},
+					"updatedAt": {
+						"type": "string",
+						"description": "Latest contact update time.",
+						"example": "2026-09-19T12:00:00.000Z",
+						"format": "date-time"
+					}
+				},
+				"required": [
+					"id",
+					"profileId",
+					"name",
+					"email",
+					"company",
+					"avatarUrl",
+					"tags",
+					"isSubscribed",
+					"isBlocked",
+					"notes",
+					"customFields",
+					"messagesSentCount",
+					"messagesReceivedCount",
+					"lastMessageSentAt",
+					"lastMessageReceivedAt",
+					"source",
+					"createdAt",
+					"updatedAt"
+				],
+				"description": "A profile-owned person. Maximum 5000 contacts per user and 20 channels per contact. Absent optional fields are returned as null. Message history is not backfilled."
+			},
+			"ContactListItem": {
+				"description": "Contact with its oldest channel identity and channel count.",
+				"allOf": [
+					{
+						"$ref": "#/components/schemas/Contact"
+					},
+					{
+						"type": "object",
+						"properties": {
+							"platform": {
+								"type": [
+									"string",
+									"null"
+								],
+								"description": "Primary (oldest by createdAt) channel: PostZen platform. Always resolved from the connected account. Null when no channel exists.",
+								"example": "instagram",
+								"enum": [
+									"x",
+									"instagram",
+									"tiktok",
+									"linkedin",
+									"facebook",
+									"youtube",
+									"threads",
+									"pinterest",
+									"bluesky",
+									"telegram"
+								]
+							},
+							"platformIdentifier": {
+								"type": [
+									"string",
+									"null"
+								],
+								"description": "Primary (oldest by createdAt) channel: Platform identity (IGSID, PSID, or handle), trimmed, 1–200 characters. Unique per connected account. Null when no channel exists.",
+								"example": "178414000001",
+								"minLength": 1,
+								"maxLength": 200
+							},
+							"displayIdentifier": {
+								"type": [
+									"string",
+									"null"
+								],
+								"description": "Primary (oldest by createdAt) channel: Optional username or friendly handle, at most 200 characters. Null when no channel exists.",
+								"example": "@jane",
+								"maxLength": 200
+							},
+							"channelCount": {
+								"type": "integer",
+								"description": "Number of channels belonging to this contact.",
+								"example": 1,
+								"minimum": 0,
+								"maximum": 20
+							}
+						},
+						"required": [
+							"platform",
+							"platformIdentifier",
+							"displayIdentifier",
+							"channelCount"
+						]
+					}
+				]
+			},
+			"ContactChannel": {
+				"type": "object",
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Contact channel id.",
+						"example": "jd7channel123"
+					},
+					"contactId": {
+						"type": "string",
+						"description": "Contact owning this channel.",
+						"example": "jd7contact123"
+					},
+					"accountId": {
+						"type": "string",
+						"description": "Connected account id; must belong to the same profile and caller.",
+						"example": "jd7account123"
+					},
+					"platform": {
+						"type": "string",
+						"description": "PostZen platform. Always resolved from the connected account.",
+						"example": "instagram",
+						"enum": [
+							"x",
+							"instagram",
+							"tiktok",
+							"linkedin",
+							"facebook",
+							"youtube",
+							"threads",
+							"pinterest",
+							"bluesky",
+							"telegram"
+						]
+					},
+					"platformIdentifier": {
+						"type": "string",
+						"description": "Platform identity (IGSID, PSID, or handle), trimmed, 1–200 characters. Unique per connected account.",
+						"example": "178414000001",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"displayIdentifier": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Optional username or friendly handle, at most 200 characters.",
+						"example": "@jane",
+						"maxLength": 200
+					},
+					"isSubscribed": {
+						"type": "boolean",
+						"description": "Channel opt-in. False prevents comment automation sends on this channel.",
+						"example": true,
+						"default": true
+					},
+					"conversationId": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Platform conversation id when known; not the PostZen inbox document id.",
+						"example": "t_12345"
+					},
+					"metadata": {
+						"type": [
+							"object",
+							"null"
+						],
+						"description": "Optional platform facts; same key and scalar value limits as customFields.",
+						"example": {
+							"locale": "en"
+						},
+						"maxProperties": 50,
+						"propertyNames": {
+							"minLength": 1,
+							"maxLength": 64,
+							"pattern": "^(?![$_])[\\x20-\\x7e]+$"
+						},
+						"additionalProperties": {
+							"oneOf": [
+								{
+									"type": "string",
+									"maxLength": 1000
+								},
+								{
+									"type": "number"
+								},
+								{
+									"type": "boolean"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					},
+					"lastActiveAt": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Latest counted message time on this channel.",
+						"example": "2026-09-19T12:00:00.000Z",
+						"format": "date-time"
+					},
+					"createdAt": {
+						"type": "string",
+						"description": "Channel creation time.",
+						"example": "2026-09-19T12:00:00.000Z",
+						"format": "date-time"
+					}
+				},
+				"required": [
+					"id",
+					"contactId",
+					"accountId",
+					"platform",
+					"platformIdentifier",
+					"displayIdentifier",
+					"isSubscribed",
+					"conversationId",
+					"metadata",
+					"lastActiveAt",
+					"createdAt"
+				],
+				"description": "One platform identity on one connected account. At most 20 channels per contact; optional fields are present as null."
+			},
+			"ContactCreateRequest": {
+				"type": "object",
+				"properties": {
+					"profileId": {
+						"type": "string",
+						"description": "Owning profile id; immutable and must be in the API key scope.",
+						"example": "jd7profile123"
+					},
+					"name": {
+						"type": "string",
+						"description": "Trimmed contact name, 1–200 characters.",
+						"example": "Jane Doe",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"email": {
+						"type": "string",
+						"description": "Trimmed lowercase email; unique within its profile.",
+						"example": "jane@example.com",
+						"maxLength": 254,
+						"pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+					},
+					"company": {
+						"type": "string",
+						"description": "Company name, at most 200 characters.",
+						"example": "Acme",
+						"maxLength": 200
+					},
+					"tags": {
+						"type": "array",
+						"description": "At most 50 tags, trimmed and deduplicated case-insensitively, preserving original case. Send [] to clear.",
+						"example": [
+							"VIP",
+							"Lead"
+						],
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 50
+						},
+						"maxItems": 50
+					},
+					"isSubscribed": {
+						"type": "boolean",
+						"description": "Contact subscription state. False prevents comment automation sends.",
+						"example": true,
+						"default": true
+					},
+					"notes": {
+						"type": "string",
+						"description": "Free-form notes, at most 5000 characters.",
+						"example": "Interested in the launch.",
+						"maxLength": 5000
+					},
+					"customFields": {
+						"type": "object",
+						"description": "At most 50 keys of 1–64 characters. Keys follow Convex record rules: printable ASCII, not starting with $ or _. Values are strings (at most 1000 characters), finite numbers, booleans, or null. PATCH replaces the entire object.",
+						"example": {
+							"leadScore": 42,
+							"customer": true
+						},
+						"maxProperties": 50,
+						"propertyNames": {
+							"minLength": 1,
+							"maxLength": 64,
+							"pattern": "^(?![$_])[\\x20-\\x7e]+$"
+						},
+						"additionalProperties": {
+							"oneOf": [
+								{
+									"type": "string",
+									"maxLength": 1000
+								},
+								{
+									"type": "number"
+								},
+								{
+									"type": "boolean"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					},
+					"accountId": {
+						"type": "string",
+						"description": "Connected account id; must belong to the same profile and caller.",
+						"example": "jd7account123"
+					},
+					"platformIdentifier": {
+						"type": "string",
+						"description": "Platform identity (IGSID, PSID, or handle), trimmed, 1–200 characters. Unique per connected account.",
+						"example": "178414000001",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"displayIdentifier": {
+						"type": "string",
+						"description": "Optional username or friendly handle, at most 200 characters. Without a channel it is ignored and a warning is returned.",
+						"example": "@jane",
+						"maxLength": 200
+					},
+					"platform": {
+						"type": "string",
+						"description": "Optional assertion of the account platform. Must equal account.platform; requires accountId and platformIdentifier.",
+						"example": "instagram",
+						"enum": [
+							"x",
+							"instagram",
+							"tiktok",
+							"linkedin",
+							"facebook",
+							"youtube",
+							"threads",
+							"pinterest",
+							"bluesky",
+							"telegram"
+						]
+					}
+				},
+				"required": [
+					"profileId",
+					"name"
+				],
+				"additionalProperties": false,
+				"description": "Creates a contact and optionally its first channel. If accountId, platformIdentifier, or platform is supplied, both accountId and platformIdentifier are required. Maximum 5000 contacts per user, 20 channels per contact. Duplicate email within the profile or duplicate channel returns 409."
+			},
+			"ContactUpdateRequest": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"description": "Trimmed contact name, 1–200 characters.",
+						"example": "Jane Doe",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"email": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Trimmed lowercase email; unique within its profile. Send null to clear.",
+						"example": "jane@example.com",
+						"maxLength": 254,
+						"pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+					},
+					"company": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Company name, at most 200 characters. Send null to clear.",
+						"example": "Acme",
+						"maxLength": 200
+					},
+					"avatarUrl": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Public HTTPS avatar URL, canonicalized on PATCH; inbox avatars are stored as supplied by the platform. Send null to clear.",
+						"example": "https://images.example.com/jane.jpg",
+						"format": "uri",
+						"maxLength": 2048
+					},
+					"tags": {
+						"type": "array",
+						"description": "At most 50 tags, trimmed and deduplicated case-insensitively, preserving original case. Send [] to clear.",
+						"example": [
+							"VIP",
+							"Lead"
+						],
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 50
+						},
+						"maxItems": 50
+					},
+					"isSubscribed": {
+						"type": "boolean",
+						"description": "Contact subscription state. False prevents comment automation sends.",
+						"example": true,
+						"default": true
+					},
+					"isBlocked": {
+						"type": "boolean",
+						"description": "Blocked contacts cannot receive comment automation sends.",
+						"example": false,
+						"default": false
+					},
+					"notes": {
+						"type": [
+							"string",
+							"null"
+						],
+						"description": "Free-form notes, at most 5000 characters. Send null to clear.",
+						"example": "Interested in the launch.",
+						"maxLength": 5000
+					},
+					"customFields": {
+						"type": [
+							"object",
+							"null"
+						],
+						"description": "At most 50 keys of 1–64 characters. Keys follow Convex record rules: printable ASCII, not starting with $ or _. Values are strings (at most 1000 characters), finite numbers, booleans, or null. PATCH replaces the entire object. Send null to clear.",
+						"example": {
+							"leadScore": 42,
+							"customer": true
+						},
+						"maxProperties": 50,
+						"propertyNames": {
+							"minLength": 1,
+							"maxLength": 64,
+							"pattern": "^(?![$_])[\\x20-\\x7e]+$"
+						},
+						"additionalProperties": {
+							"oneOf": [
+								{
+									"type": "string",
+									"maxLength": 1000
+								},
+								{
+									"type": "number"
+								},
+								{
+									"type": "boolean"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					}
+				},
+				"required": [],
+				"additionalProperties": false,
+				"description": "Partial update. profileId cannot be changed; channel fields and unknown keys are rejected with 400 validation. Tags replace the array and customFields replaces the whole object."
+			},
+			"ContactBulkCreateRow": {
+				"type": "object",
+				"properties": {
+					"name": {
+						"type": "string",
+						"description": "Trimmed contact name, 1–200 characters.",
+						"example": "Jane Doe",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"email": {
+						"type": "string",
+						"description": "Trimmed lowercase email; unique within its profile.",
+						"example": "jane@example.com",
+						"maxLength": 254,
+						"pattern": "^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$"
+					},
+					"company": {
+						"type": "string",
+						"description": "Company name, at most 200 characters.",
+						"example": "Acme",
+						"maxLength": 200
+					},
+					"tags": {
+						"type": "array",
+						"description": "At most 50 tags, trimmed and deduplicated case-insensitively, preserving original case. Send [] to clear.",
+						"example": [
+							"VIP",
+							"Lead"
+						],
+						"items": {
+							"type": "string",
+							"minLength": 1,
+							"maxLength": 50
+						},
+						"maxItems": 50
+					},
+					"isSubscribed": {
+						"type": "boolean",
+						"description": "Contact subscription state. False prevents comment automation sends.",
+						"example": true,
+						"default": true
+					},
+					"notes": {
+						"type": "string",
+						"description": "Free-form notes, at most 5000 characters.",
+						"example": "Interested in the launch.",
+						"maxLength": 5000
+					},
+					"customFields": {
+						"type": "object",
+						"description": "At most 50 keys of 1–64 characters. Keys follow Convex record rules: printable ASCII, not starting with $ or _. Values are strings (at most 1000 characters), finite numbers, booleans, or null. PATCH replaces the entire object.",
+						"example": {
+							"leadScore": 42,
+							"customer": true
+						},
+						"maxProperties": 50,
+						"propertyNames": {
+							"minLength": 1,
+							"maxLength": 64,
+							"pattern": "^(?![$_])[\\x20-\\x7e]+$"
+						},
+						"additionalProperties": {
+							"oneOf": [
+								{
+									"type": "string",
+									"maxLength": 1000
+								},
+								{
+									"type": "number"
+								},
+								{
+									"type": "boolean"
+								},
+								{
+									"type": "null"
+								}
+							]
+						}
+					},
+					"platformIdentifier": {
+						"type": "string",
+						"description": "Required when the bulk envelope has accountId. Supplying an identity without an envelope accountId is a per-row error.",
+						"example": "178414000001",
+						"minLength": 1,
+						"maxLength": 200
+					},
+					"displayIdentifier": {
+						"type": "string",
+						"description": "Optional username or friendly handle, at most 200 characters. Without a channel it is ignored and a warning is returned.",
+						"example": "@jane",
+						"maxLength": 200
+					}
+				},
+				"required": [
+					"name"
+				],
+				"additionalProperties": false,
+				"description": "One import row. Invalid rows are reported with a 1-based row number and do not prevent other rows from importing. No channel is added for duplicates."
+			},
+			"ContactBulkCreateRequest": {
+				"type": "object",
+				"properties": {
+					"profileId": {
+						"type": "string",
+						"description": "Owning profile id; immutable and must be in the API key scope.",
+						"example": "jd7profile123"
+					},
+					"accountId": {
+						"type": "string",
+						"description": "Connected account id; must belong to the same profile and caller.",
+						"example": "jd7account123"
+					},
+					"platform": {
+						"type": "string",
+						"description": "Ignored when accountId is supplied. Without accountId, this field is rejected with 400 validation; platform disambiguation is not supported.",
+						"example": "instagram"
+					},
+					"contacts": {
+						"type": "array",
+						"description": "Rows to process in one mutation. Row validation errors are reported individually.",
+						"example": [
+							{
+								"name": "Jane Doe",
+								"email": "jane@example.com"
+							}
+						],
+						"items": {
+							"$ref": "#/components/schemas/ContactBulkCreateRow"
+						},
+						"minItems": 1,
+						"maxItems": 1000
+					}
+				},
+				"required": [
+					"profileId",
+					"contacts"
+				],
+				"additionalProperties": false,
+				"description": "Import 1–1000 contacts into one profile. A supplied accountId applies to every row. Duplicates by channel (first) or profile email are skipped and only new tags are merged, retaining existing case. A merged tag list over 50 is a row error. When the 5000-contact cap is reached, remaining rows receive contact limit reached errors."
+			},
+			"ContactBulkCreateResponse": {
+				"type": "object",
+				"properties": {
+					"message": {
+						"type": "string",
+						"description": "Import outcome summary.",
+						"example": "Contacts imported successfully"
+					},
+					"created": {
+						"type": "integer",
+						"description": "Number of newly created contacts.",
+						"example": 1,
+						"minimum": 0
+					},
+					"skipped": {
+						"type": "integer",
+						"description": "Number of duplicate contacts skipped, with tags merged.",
+						"example": 1,
+						"minimum": 0
+					},
+					"errors": {
+						"type": "array",
+						"description": "Per-row errors using 1-based row numbers.",
+						"example": [
+							"row 3: name is required"
+						],
+						"items": {
+							"type": "string"
+						}
+					},
+					"total": {
+						"type": "integer",
+						"description": "Number of submitted rows; equals created + skipped + errors.length.",
+						"example": 3,
+						"minimum": 1,
+						"maximum": 1000
+					}
+				},
+				"required": [
+					"message",
+					"created",
+					"skipped",
+					"errors",
+					"total"
+				]
 			}
 		}
 	}
