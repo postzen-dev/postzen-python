@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 class PostsResource(BaseResource[Any]):
-    """Create and publish posts."""
+    """Create drafts, scheduled posts, or immediate posts, and read LinkedIn comments and reactions on published organization posts."""
 
     def __init__(self, client: BaseClient) -> None:
         super().__init__(client)
@@ -130,14 +130,14 @@ class PostsResource(BaseResource[Any]):
     def get_post(self, post_id: str) -> dict[str, Any]:
         """Get a post."""
         data = self._client._get(f"/v1/posts/{post_id}")
-        return dict[str, Any].model_validate(data)
+        return data
 
     async def aget_post(self, post_id: str) -> dict[str, Any]:
         """Get a post (async)."""
         data = await self._client._aget(f"/v1/posts/{post_id}")
-        return dict[str, Any].model_validate(data)
+        return data
 
-    def update_post(self, post_id: str, *, title: str | None = None, content: str | None = '', media_items: list[dict[str, Any]] | None = None, platforms: list[dict[str, Any]] | None = None, scheduled_for: datetime | str | None = None, publish_now: bool | None = None, is_draft: bool | None = None, queued_from_profile: str | None = None, queue_id: str | None = None, timezone: str | None = 'UTC', tags: list[str] | None = None) -> UpdatePostResponse:
+    def update_post(self, post_id: str, *, title: str | None = None, content: str | None = None, media_items: list[dict[str, Any]] | None = None, platforms: list[dict[str, Any]] | None = None, scheduled_for: datetime | str | None = None, publish_now: bool | None = None, is_draft: bool | None = None, queued_from_profile: str | None = None, queue_id: str | None = None, timezone: str | None = None, tags: list[str] | None = None) -> UpdatePostResponse:
         """Update a post."""
         payload = self._build_payload(
             title=title,
@@ -155,7 +155,7 @@ class PostsResource(BaseResource[Any]):
         data = self._client._put(f"/v1/posts/{post_id}", data=payload)
         return UpdatePostResponse.model_validate(data)
 
-    async def aupdate_post(self, post_id: str, *, title: str | None = None, content: str | None = '', media_items: list[dict[str, Any]] | None = None, platforms: list[dict[str, Any]] | None = None, scheduled_for: datetime | str | None = None, publish_now: bool | None = None, is_draft: bool | None = None, queued_from_profile: str | None = None, queue_id: str | None = None, timezone: str | None = 'UTC', tags: list[str] | None = None) -> UpdatePostResponse:
+    async def aupdate_post(self, post_id: str, *, title: str | None = None, content: str | None = None, media_items: list[dict[str, Any]] | None = None, platforms: list[dict[str, Any]] | None = None, scheduled_for: datetime | str | None = None, publish_now: bool | None = None, is_draft: bool | None = None, queued_from_profile: str | None = None, queue_id: str | None = None, timezone: str | None = None, tags: list[str] | None = None) -> UpdatePostResponse:
         """Update a post (async)."""
         payload = self._build_payload(
             title=title,
@@ -176,12 +176,12 @@ class PostsResource(BaseResource[Any]):
     def delete_post(self, post_id: str) -> dict[str, Any]:
         """Delete a post."""
         data = self._client._delete(f"/v1/posts/{post_id}")
-        return dict[str, Any].model_validate(data)
+        return data
 
     async def adelete_post(self, post_id: str) -> dict[str, Any]:
         """Delete a post (async)."""
         data = await self._client._adelete(f"/v1/posts/{post_id}")
-        return dict[str, Any].model_validate(data)
+        return data
 
     def list_post_comments(self, post_id: str, *, account_id: str | None = None, cursor: str | None = None, limit: int | None = 25) -> LinkedInCommentsResponse:
         """List comments on a LinkedIn post."""

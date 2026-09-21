@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 class ConnectResource(BaseResource[Any]):
-    """Create and complete OAuth connection flows."""
+    """Start and complete OAuth account connection flows."""
 
     def __init__(self, client: BaseClient) -> None:
         super().__init__(client)

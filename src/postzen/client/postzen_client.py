@@ -7,10 +7,17 @@ from typing import TYPE_CHECKING
 
 from ..resources import (
     AccountsResource,
+    AnalyticsResource,
+    ApiKeysResource,
+    CommentAutomationsResource,
     ConnectResource,
+    ContactsResource,
+    InboxResource,
     MediaResource,
     PostsResource,
     ProfilesResource,
+    QueuesResource,
+    WebhooksResource,
 )
 from .base import BaseClient
 
@@ -44,6 +51,13 @@ class PostZen(BaseClient):
         self.connect = ConnectResource(self)
         self.media = MediaResource(self)
         self.posts = PostsResource(self)
+        self.inbox = InboxResource(self)
+        self.comment_automations = CommentAutomationsResource(self)
+        self.contacts = ContactsResource(self)
+        self.queues = QueuesResource(self)
+        self.analytics = AnalyticsResource(self)
+        self.api_keys = ApiKeysResource(self)
+        self.webhooks = WebhooksResource(self)
         # --- end auto-registered resources ---
 
     def __enter__(self) -> Self:

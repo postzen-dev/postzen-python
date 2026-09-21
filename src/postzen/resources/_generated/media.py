@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 
 class MediaResource(BaseResource[Any]):
-    """Create presigned media upload URLs."""
+    """Create presigned upload URLs for PostZen-hosted media, or upload a small file directly."""
 
     def __init__(self, client: BaseClient) -> None:
         super().__init__(client)

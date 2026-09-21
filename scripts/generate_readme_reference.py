@@ -8,28 +8,7 @@ import re
 import sys
 from pathlib import Path
 
-RESOURCE_ORDER = ["profiles", "accounts", "connect", "media", "posts"]
-DISPLAY_NAMES = {
-    "profiles": "Profiles",
-    "accounts": "Accounts",
-    "connect": "Connect (OAuth)",
-    "media": "Media",
-    "posts": "Posts",
-}
-TAG_TO_RESOURCE = {
-    "Profiles": "profiles",
-    "Accounts": "accounts",
-    "Connect": "connect",
-    "Media": "media",
-    "Posts": "posts",
-}
-
-
-def camel_to_snake(name: str) -> str:
-    name = name.replace("-", "_")
-    name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-    name = re.sub(r"([a-z\d])([A-Z])", r"\1_\2", name)
-    return name.lower()
+from resource_map import camel_to_snake, display_name, operations, resource_order
 
 
 def method_sort_key(name: str) -> tuple[int, str]:
@@ -48,27 +27,23 @@ def method_sort_key(name: str) -> tuple[int, str]:
 
 
 def generate_reference(spec: dict) -> str:
-    resources: dict[str, list[tuple[str, str]]] = {name: [] for name in RESOURCE_ORDER}
-    for path_item in spec.get("paths", {}).values():
-        if not isinstance(path_item, dict):
-            continue
-        for http_method, operation in path_item.items():
-            if http_method not in {"get", "post", "put", "patch", "delete"} or not isinstance(operation, dict):
-                continue
-            tag = operation.get("tags", [""])[0]
-            resource = TAG_TO_RESOURCE.get(tag)
-            operation_id = operation.get("operationId")
-            if resource and operation_id:
-                resources[resource].append(
-                    (camel_to_snake(operation_id), operation.get("summary") or operation_id)
-                )
+    order = resource_order(spec)
+    tag_to_resource = dict(order)
+    resources = {key: [] for _, key in order}
+    for _, _, _, operation in operations(spec):
+        for tag in operation["tags"]:
+            resource = tag_to_resource[tag]
+            operation_id = operation["operationId"]
+            resources[resource].append(
+                (camel_to_snake(operation_id), operation.get("summary") or operation_id)
+            )
 
     lines = ["## SDK Reference", ""]
-    for resource in RESOURCE_ORDER:
+    for tag, resource in order:
         methods = sorted(resources[resource], key=lambda item: method_sort_key(item[0]))
         if not methods:
             continue
-        lines.append(f"### {DISPLAY_NAMES[resource]}")
+        lines.append(f"### {display_name(tag)}")
         lines.append("| Method | Description |")
         lines.append("|--------|-------------|")
         for method, description in methods:

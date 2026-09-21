@@ -11,7 +11,7 @@
 
 <p align="center"><strong>One API to post everywhere. 8 platforms, zero headaches.</strong></p>
 
-The official Python SDK for the [PostZen API](https://docs.postzen.dev) — schedule and publish social media posts across X/Twitter, Instagram, TikTok, LinkedIn, Facebook, YouTube, Threads, and Pinterest with a single integration.
+The official Python SDK for the [PostZen API](https://docs.postzen.dev) — manage profiles, accounts, OAuth connect, media, posts, inbox, comment automations, contacts, queues, analytics, API keys, and webhooks with a single integration.
 
 ## Installation
 
@@ -293,6 +293,82 @@ client.posts.create_post(
 | `posts.update_post()` | Update a post |
 | `posts.delete_post()` | Delete a post |
 | `posts.bulk_upload_posts()` | Bulk upload posts from CSV |
+
+### Inbox
+| Method | Description |
+|--------|-------------|
+| `inbox.list_inbox_conversation_messages()` | List messages in a conversation |
+| `inbox.list_inbox_conversations()` | List direct message conversations |
+| `inbox.list_inbox_post_comments()` | List comments on a post |
+| `inbox.get_inbox_conversation()` | Get a direct message conversation |
+| `inbox.update_inbox_conversation()` | Archive or unarchive a conversation |
+| `inbox.delete_inbox_comment()` | Delete a comment |
+| `inbox.hide_inbox_comment()` | Hide a comment |
+| `inbox.mark_inbox_conversation_read()` | Mark a conversation read |
+| `inbox.reply_to_inbox_post()` | Comment on a post or reply to a comment |
+| `inbox.search_inbox_conversations()` | Search direct message conversations |
+| `inbox.send_inbox_message()` | Send a direct message |
+| `inbox.unhide_inbox_comment()` | Unhide a comment |
+
+### Comment Automations
+| Method | Description |
+|--------|-------------|
+| `comment_automations.list_comment_automation_logs()` | List comment automation logs |
+| `comment_automations.list_comment_automations()` | List comment automations |
+| `comment_automations.create_comment_automation()` | Create a comment automation |
+| `comment_automations.get_comment_automation()` | Get a comment automation |
+| `comment_automations.update_comment_automation()` | Update a comment automation |
+| `comment_automations.delete_comment_automation()` | Delete a comment automation |
+
+### Contacts
+| Method | Description |
+|--------|-------------|
+| `contacts.list_contacts()` | List contacts |
+| `contacts.create_contact()` | Create a contact |
+| `contacts.get_contact()` | Get a contact |
+| `contacts.get_contact_channels()` | Get contact channels |
+| `contacts.update_contact()` | Update a contact |
+| `contacts.delete_contact()` | Delete a contact |
+| `contacts.bulk_create_contacts()` | Bulk create contacts |
+
+### Queues
+| Method | Description |
+|--------|-------------|
+| `queues.list_queue_slots()` | Get a queue schedule |
+| `queues.create_queue_slot()` | Create a queue |
+| `queues.get_next_queue_slot()` | Get the next queue slot |
+| `queues.update_queue_slot()` | Update a queue |
+| `queues.delete_queue_slot()` | Delete a queue |
+| `queues.preview_queue()` | Preview upcoming queue slots |
+
+### Analytics
+| Method | Description |
+|--------|-------------|
+| `analytics.get_analytics()` | Get post analytics |
+| `analytics.get_best_time_to_post()` | Get the best times to post |
+| `analytics.get_daily_metrics()` | Get daily analytics metrics |
+| `analytics.get_follower_stats()` | Get follower statistics |
+| `analytics.get_post_timeline()` | Get a post analytics timeline |
+| `analytics.sync_external_posts()` | Synchronize external posts |
+
+### API Keys
+| Method | Description |
+|--------|-------------|
+| `api_keys.list_api_keys()` | List API keys |
+| `api_keys.create_api_key()` | Create an API key |
+| `api_keys.delete_api_key()` | Delete an API key |
+
+### Webhooks
+| Method | Description |
+|--------|-------------|
+| `webhooks.list_webhook_deliveries()` | List webhook deliveries |
+| `webhooks.list_webhooks()` | List webhooks |
+| `webhooks.create_webhook()` | Create a webhook |
+| `webhooks.get_webhook()` | Get a webhook |
+| `webhooks.update_webhook()` | Update a webhook |
+| `webhooks.delete_webhook()` | Delete a webhook |
+| `webhooks.redeliver_webhook_delivery()` | Redeliver a webhook event |
+| `webhooks.test_webhook()` | Test a webhook |
 
 ## Requirements
 

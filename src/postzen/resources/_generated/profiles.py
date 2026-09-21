@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
 
 class ProfilesResource(BaseResource[Any]):
-    """Manage PostZen profiles."""
+    """List, create, update, and delete PostZen profiles."""
 
     def __init__(self, client: BaseClient) -> None:
         super().__init__(client)

@@ -3,38 +3,13 @@
 
 from __future__ import annotations
 
+import ast
 import json
-import keyword
 import re
 from pathlib import Path
 from typing import Any
 
-RESOURCE_ORDER = ["profiles", "accounts", "connect", "media", "posts"]
-TAG_TO_RESOURCE = {
-    "Profiles": "profiles",
-    "Accounts": "accounts",
-    "Connect": "connect",
-    "Media": "media",
-    "Posts": "posts",
-}
-RESOURCE_DESCRIPTIONS = {
-    "profiles": "Manage PostZen profiles",
-    "accounts": "List and disconnect connected social accounts",
-    "connect": "Create and complete OAuth connection flows",
-    "media": "Create presigned media upload URLs",
-    "posts": "Create and publish posts",
-}
-HTTP_METHODS = {"get", "post", "put", "patch", "delete"}
-
-
-def camel_to_snake(name: str) -> str:
-    name = name.replace("-", "_")
-    name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-    name = re.sub(r"([a-z\d])([A-Z])", r"\1_\2", name)
-    result = name.lower()
-    if keyword.iskeyword(result):
-        result += "_"
-    return result
+from resource_map import camel_to_snake, description, operations, resource_order
 
 
 def class_name(resource: str) -> str:
@@ -154,6 +129,10 @@ def extract_parameters(spec: dict[str, Any], path_item: dict[str, Any], operatio
             .get("schema", {}),
         )
         required_props = set(schema.get("required") or [])
+        # PUT/PATCH are partial updates: never bake spec defaults into the
+        # signature, or an omitted field would be sent (e.g. isBlocked=false,
+        # content="") and overwrite the stored value. Only explicit args go out.
+        is_update = operation.get("http_method", "").lower() in {"put", "patch"}
         for prop_name, prop_schema in schema.get("properties", {}).items():
             required = prop_name in required_props
             params.append(
@@ -163,7 +142,7 @@ def extract_parameters(spec: dict[str, Any], path_item: dict[str, Any], operatio
                     "location": "body",
                     "required": required,
                     "type": python_type(spec, prop_schema, required),
-                    "default": schema_default(prop_schema),
+                    "default": None if is_update else schema_default(prop_schema),
                     "description": prop_schema.get("description", ""),
                 }
             )
@@ -171,6 +150,8 @@ def extract_parameters(spec: dict[str, Any], path_item: dict[str, Any], operatio
 
 
 def default_literal(value: Any) -> str:
+    if isinstance(value, (list, dict)):
+        return "None"
     if isinstance(value, str):
         return repr(value)
     if isinstance(value, bool):
@@ -218,6 +199,10 @@ def method_body(operation: dict[str, Any], params: list[dict[str, Any]], respons
     header_params = [p for p in params if p["location"] == "header"]
     body_params = [p for p in params if p["location"] == "body"]
     lines: list[str] = []
+    for param in params:
+        if not param["required"] and isinstance(param["default"], (list, dict)):
+            lines.append(f"        if {param['name']} is None:")
+            lines.append(f"            {param['name']} = {param['default']!r}")
 
     if query_params:
         lines.append("        params = self._build_params(")
@@ -243,11 +228,15 @@ def method_body(operation: dict[str, Any], params: list[dict[str, Any]], respons
     if header_params:
         args.append("headers=headers")
     lines.append(f"        data = {await_prefix}self._client.{client_method}({', '.join(args)})")
-    lines.append(f"        return {response_model}.model_validate(data)")
+    # Responses without a named schema have no Pydantic model; return the raw dict.
+    if response_model == "dict[str, Any]":
+        lines.append("        return data")
+    else:
+        lines.append(f"        return {response_model}.model_validate(data)")
     return lines
 
 
-def generate_resource(resource: str, operations: list[dict[str, Any]]) -> str:
+def generate_resource(resource: str, operations: list[dict[str, Any]], resource_description: str) -> str:
     models = sorted({operation["response_model"] for operation in operations if operation["response_model"] != "dict[str, Any]"})
     uses_datetime = any("datetime" in p["type"] for op in operations for p in op["params"])
     lines = [
@@ -278,7 +267,7 @@ def generate_resource(resource: str, operations: list[dict[str, Any]]) -> str:
     lines.append("")
     lines.append("")
     lines.append(f"class {class_name(resource)}(BaseResource[Any]):")
-    lines.append(f'    """{RESOURCE_DESCRIPTIONS.get(resource, resource.title())}."""')
+    lines.append(f'    """{resource_description}."""')
     lines.append("")
     lines.append("    def __init__(self, client: BaseClient) -> None:")
     lines.append("        super().__init__(client)")
@@ -299,7 +288,7 @@ def generate_resource(resource: str, operations: list[dict[str, Any]]) -> str:
 
 
 def generate_resource_init(generated: list[str], manual: list[str]) -> str:
-    all_resources = [r for r in RESOURCE_ORDER if r in set(generated) | set(manual)]
+    all_resources = generated
     lines = [
         '"""API resources.',
         "",
@@ -344,36 +333,70 @@ def update_client(client_path: Path, resources: list[str]) -> None:
     client_path.write_text(content)
 
 
+def validate_client_resources(root: Path, resources: list[str]) -> None:
+    """Find class and instance attributes without importing generated resources."""
+    attributes = set(dir(object))
+    for filename in ("base.py", "postzen_client.py"):
+        source = (root / "src" / "postzen" / "client" / filename).read_text()
+        source = re.sub(
+            r"        # --- auto-registered resources .*?        # --- end auto-registered resources ---",
+            "", source, flags=re.DOTALL,
+        )
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                attributes.add(node.name)
+            elif isinstance(node, ast.Attribute) and isinstance(node.ctx, ast.Store):
+                if isinstance(node.value, ast.Name) and node.value.id == "self":
+                    attributes.add(node.attr)
+            elif isinstance(node, ast.ClassDef):
+                for statement in node.body:
+                    targets = statement.targets if isinstance(statement, ast.Assign) else (
+                        [statement.target] if isinstance(statement, ast.AnnAssign) else []
+                    )
+                    attributes.update(target.id for target in targets if isinstance(target, ast.Name))
+    collisions = sorted(set(resources) & attributes)
+    if collisions:
+        raise SystemExit("Resource keys collide with client attributes: " + ", ".join(collisions))
+
+
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     spec_path = root / "openapi.json"
     spec = json.loads(spec_path.read_text())
-    resources: dict[str, list[dict[str, Any]]] = {name: [] for name in RESOURCE_ORDER}
+    order = resource_order(spec)
+    validate_client_resources(root, [key for _, key in order])
+    tag_to_resource = dict(order)
+    resources: dict[str, list[dict[str, Any]]] = {key: [] for _, key in order}
+    for path, http_method, path_item, raw_operation in operations(spec):
+        operation = dict(raw_operation)
+        operation["http_method"] = http_method
+        operation["path"] = path
+        operation["params"] = extract_parameters(spec, path_item, operation)
+        operation["response_model"] = extract_response_model(operation)
+        for tag in operation["tags"]:
+            resources[tag_to_resource[tag]].append(operation)
 
-    for path, path_item in spec.get("paths", {}).items():
-        if not isinstance(path_item, dict):
-            continue
-        for http_method, operation in path_item.items():
-            if http_method not in HTTP_METHODS or not isinstance(operation, dict):
-                continue
-            tag = operation.get("tags", ["Other"])[0]
-            resource = TAG_TO_RESOURCE.get(tag)
-            if resource is None:
-                continue
-            operation = dict(operation)
-            operation["http_method"] = http_method
-            operation["path"] = path
-            operation["params"] = extract_parameters(spec, path_item, operation)
-            operation["response_model"] = extract_response_model(operation)
-            resources[resource].append(operation)
+    # Check exports before writing anything; models are generated separately.
+    import sys
+
+    sys.path.insert(0, str(root / "src"))
+    from postzen import models
+
+    missing = sorted({
+        op["response_model"] for ops in resources.values() for op in ops
+        if op["response_model"] != "dict[str, Any]" and not hasattr(models, op["response_model"])
+    })
+    if missing:
+        raise SystemExit("Missing response models: " + ", ".join(missing))
+    resource_descriptions = {key: description(spec, tag) for tag, key in order}
 
     resources_dir = root / "src" / "postzen" / "resources"
     generated_dir = resources_dir / "_generated"
     generated_dir.mkdir(parents=True, exist_ok=True)
-    generated_resources = [name for name in RESOURCE_ORDER if resources[name]]
+    generated_resources = list(resources)
 
     for resource in generated_resources:
-        (generated_dir / f"{resource}.py").write_text(generate_resource(resource, resources[resource]))
+        (generated_dir / f"{resource}.py").write_text(generate_resource(resource, resources[resource], resource_descriptions[resource]))
         print(f"Generated {resource}.py")
 
     init_lines = ['"""Auto-generated resources."""', "", "from __future__ import annotations", ""]

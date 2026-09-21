@@ -277,6 +277,23 @@ class BaseClient:
                 headers=self._merge_headers(headers),
             )
 
+    def _patch(
+        self,
+        path: str,
+        data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
+        with self._sync_client() as client:
+            return self._request_with_retry(
+                client,
+                "PATCH",
+                path,
+                json=data,
+                params=params,
+                headers=self._merge_headers(headers),
+            )
+
     def _delete(
         self,
         path: str,
@@ -335,6 +352,23 @@ class BaseClient:
             return await self._arequest_with_retry(
                 client,
                 "PUT",
+                path,
+                json=data,
+                params=params,
+                headers=self._merge_headers(headers),
+            )
+
+    async def _apatch(
+        self,
+        path: str,
+        data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        headers: Mapping[str, str] | None = None,
+    ) -> dict[str, Any]:
+        async with self._async_client() as client:
+            return await self._arequest_with_retry(
+                client,
+                "PATCH",
                 path,
                 json=data,
                 params=params,

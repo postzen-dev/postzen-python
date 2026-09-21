@@ -4,40 +4,22 @@
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
-TAG_TO_RESOURCE = {
-    "Profiles": "profiles",
-    "Accounts": "accounts",
-    "Connect": "connect",
-    "Media": "media",
-    "Posts": "posts",
-}
-RESOURCE_ORDER = ["profiles", "accounts", "connect", "media", "posts"]
-
-
-def camel_to_snake(name: str) -> str:
-    name = name.replace("-", "_")
-    name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
-    name = re.sub(r"([a-z\d])([A-Z])", r"\1_\2", name)
-    return name.lower()
+from resource_map import camel_to_snake, operations, resource_order
 
 
 def main() -> int:
     root = Path(__file__).resolve().parent.parent
     spec = json.loads((root / "openapi.json").read_text())
-    endpoints: dict[str, list[str]] = {name: [] for name in RESOURCE_ORDER}
-    for path_item in spec.get("paths", {}).values():
-        if not isinstance(path_item, dict):
-            continue
-        for http_method, operation in path_item.items():
-            if http_method not in {"get", "post", "put", "patch", "delete"} or not isinstance(operation, dict):
-                continue
-            tag = operation.get("tags", [""])[0]
-            resource = TAG_TO_RESOURCE.get(tag)
-            if resource and operation.get("operationId"):
-                endpoints[resource].append(camel_to_snake(operation["operationId"]))
+    order = resource_order(spec)
+    tag_to_resource = dict(order)
+    endpoints = {key: [] for _, key in order}
+    for _, _, _, operation in operations(spec):
+        for tag in operation["tags"]:
+            resource = tag_to_resource[tag]
+            operation_id = operation["operationId"]
+            endpoints[resource].append(camel_to_snake(operation_id))
 
     lines = [
         '"""Auto-generated endpoint surface tests.',
@@ -52,7 +34,7 @@ def main() -> int:
         "def test_all_spec_endpoints_are_available(client):",
         "    expected = {",
     ]
-    for resource in RESOURCE_ORDER:
+    for _, resource in order:
         lines.append(f'        "{resource}": [')
         for method in endpoints[resource]:
             lines.append(f'            "{method}",')

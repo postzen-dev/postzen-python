@@ -5,9 +5,16 @@ Manual resource modules in this package take precedence over generated modules.
 """
 
 from ._generated.accounts import AccountsResource
+from ._generated.analytics import AnalyticsResource
+from ._generated.api_keys import ApiKeysResource
+from ._generated.comment_automations import CommentAutomationsResource
 from ._generated.connect import ConnectResource
+from ._generated.contacts import ContactsResource
+from ._generated.inbox import InboxResource
 from ._generated.posts import PostsResource
 from ._generated.profiles import ProfilesResource
+from ._generated.queues import QueuesResource
+from ._generated.webhooks import WebhooksResource
 from .media import MediaResource
 
 __all__ = [
@@ -16,4 +23,11 @@ __all__ = [
     "ConnectResource",
     "MediaResource",
     "PostsResource",
+    "InboxResource",
+    "CommentAutomationsResource",
+    "ContactsResource",
+    "QueuesResource",
+    "AnalyticsResource",
+    "ApiKeysResource",
+    "WebhooksResource",
 ]
