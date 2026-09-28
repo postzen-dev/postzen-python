@@ -11073,13 +11073,46 @@
 			},
 			"XSettings": {
 				"type": "object",
+				"description": "X target settings. A single X post carries up to 280 characters and 1–4 images, one video, or one GIF. Set `threadItems` to publish a thread instead: the first item is the root post and each later item is published as a reply to the one before it. When `threadItems` is set, this target's `content`/`customContent` and the post's top-level `mediaItems` are not published to X — each item carries its own text and media — but they still apply to the post's other targets.",
 				"properties": {
 					"replySettings": {
 						"type": "string",
 						"enum": [
 							"following",
 							"mentionedUsers"
-						]
+						],
+						"description": "Who can reply to the post. Omit to let everyone reply. On a thread this applies to the root post, which is where X enforces reply restrictions for the whole conversation."
+					},
+					"threadItems": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 25,
+						"description": "Publish this target as a thread of 1–25 posts, in order. The first item is the root post and each later item is published as a reply to the previous one. When set, the target's `content`/`customContent` and the post's top-level `mediaItems` are not published to X; they still apply to the post's other targets. `platformPostUrl` on the result is the root post's URL. A one-item thread publishes like a plain post.",
+						"items": {
+							"$ref": "#/components/schemas/XThreadItem"
+						}
+					}
+				}
+			},
+			"XThreadItem": {
+				"type": "object",
+				"description": "One post in an X thread. Each item needs text, media, or both.",
+				"required": [
+					"content"
+				],
+				"properties": {
+					"content": {
+						"type": "string",
+						"maxLength": 280,
+						"description": "Text of this post in the thread, up to 280 characters. May be empty only when the item has `mediaItems`."
+					},
+					"mediaItems": {
+						"type": "array",
+						"maxItems": 4,
+						"description": "Media attached to this post in the thread, in the same format as the post's top-level `mediaItems`: 1–4 images, or one video, or one GIF. Images and videos cannot be mixed within an item.",
+						"items": {
+							"$ref": "#/components/schemas/PostMediaItem"
+						}
 					}
 				}
 			},

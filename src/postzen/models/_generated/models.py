@@ -1879,12 +1879,25 @@ class LinkedInSettings(BaseModel):
     ] = None
 
 
-class XSettings(BaseModel):
+class XThreadItem(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
         populate_by_name=True,
     )
-    replySettings: Literal['following', 'mentionedUsers'] | None = None
+    content: Annotated[
+        str,
+        Field(
+            description='Text of this post in the thread, up to 280 characters. May be empty only when the item has `mediaItems`.',
+            max_length=280,
+        ),
+    ]
+    mediaItems: Annotated[
+        list[PostMediaItem] | None,
+        Field(
+            description="Media attached to this post in the thread, in the same format as the post's top-level `mediaItems`: 1–4 images, or one video, or one GIF. Images and videos cannot be mixed within an item.",
+            max_length=4,
+        ),
+    ] = None
 
 
 class YouTubeSettings(BaseModel):
@@ -3776,6 +3789,27 @@ class AnalyticsListResponse(BaseModel):
     ]
 
 
+class XSettings(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    replySettings: Annotated[
+        Literal['following', 'mentionedUsers'] | None,
+        Field(
+            description='Who can reply to the post. Omit to let everyone reply. On a thread this applies to the root post, which is where X enforces reply restrictions for the whole conversation.'
+        ),
+    ] = None
+    threadItems: Annotated[
+        list[XThreadItem] | None,
+        Field(
+            description="Publish this target as a thread of 1–25 posts, in order. The first item is the root post and each later item is published as a reply to the previous one. When set, the target's `content`/`customContent` and the post's top-level `mediaItems` are not published to X; they still apply to the post's other targets. `platformPostUrl` on the result is the root post's URL. A one-item thread publishes like a plain post.",
+            max_length=25,
+            min_length=1,
+        ),
+    ] = None
+
+
 class ApiPostPlatformResult(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -3800,48 +3834,6 @@ class ApiPostPlatformResult(BaseModel):
     ]
     platformPostUrl: str | None = None
     error: str | None = None
-
-
-class CreatePostTarget(BaseModel):
-    model_config = ConfigDict(
-        extra='ignore',
-        populate_by_name=True,
-    )
-    platform: Literal[
-        'twitter',
-        'x',
-        'instagram',
-        'tiktok',
-        'linkedin',
-        'facebook',
-        'youtube',
-        'threads',
-        'pinterest',
-        'bluesky',
-        'telegram',
-    ]
-    accountId: Annotated[
-        str, Field(description='PostZen account id or provider account id.')
-    ]
-    customContent: Annotated[
-        str | None, Field(description='Overrides shared `content` for this platform.')
-    ] = None
-    settings: Annotated[
-        InstagramSettings
-        | FacebookSettings
-        | ThreadsSettings
-        | TikTokSettings
-        | LinkedInSettings
-        | XSettings
-        | YouTubeSettings
-        | PinterestSettings
-        | BlueskySettings
-        | TelegramSettings
-        | None,
-        Field(
-            description='Platform-specific publishing options. Unknown keys are ignored.'
-        ),
-    ] = None
 
 
 class ApiPost(BaseModel):
@@ -3902,6 +3894,48 @@ class PostsListResponse(BaseModel):
     )
     posts: list[ApiPost]
     pagination: PaginationModel
+
+
+class CreatePostTarget(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    platform: Literal[
+        'twitter',
+        'x',
+        'instagram',
+        'tiktok',
+        'linkedin',
+        'facebook',
+        'youtube',
+        'threads',
+        'pinterest',
+        'bluesky',
+        'telegram',
+    ]
+    accountId: Annotated[
+        str, Field(description='PostZen account id or provider account id.')
+    ]
+    customContent: Annotated[
+        str | None, Field(description='Overrides shared `content` for this platform.')
+    ] = None
+    settings: Annotated[
+        InstagramSettings
+        | FacebookSettings
+        | ThreadsSettings
+        | TikTokSettings
+        | LinkedInSettings
+        | XSettings
+        | YouTubeSettings
+        | PinterestSettings
+        | BlueskySettings
+        | TelegramSettings
+        | None,
+        Field(
+            description='Platform-specific publishing options. Unknown keys are ignored.'
+        ),
+    ] = None
 
 
 class CreatePostRequest(BaseModel):
