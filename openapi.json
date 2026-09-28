@@ -11324,6 +11324,14 @@
 					},
 					"error": {
 						"type": "string"
+					},
+					"customContent": {
+						"type": "string",
+						"description": "The per-platform content override this target was created with, if any."
+					},
+					"settings": {
+						"$ref": "#/components/schemas/PostPlatformSettings",
+						"description": "The platform settings this target was created with, echoed back in the same shape the create request accepts. For X threads, each `threadItems[].mediaItems` entry carries the hosted `url` of the stored media."
 					}
 				}
 			},

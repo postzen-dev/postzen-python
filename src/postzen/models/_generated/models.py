@@ -3834,6 +3834,70 @@ class ApiPostPlatformResult(BaseModel):
     ]
     platformPostUrl: str | None = None
     error: str | None = None
+    customContent: Annotated[
+        str | None,
+        Field(
+            description='The per-platform content override this target was created with, if any.'
+        ),
+    ] = None
+    settings: Annotated[
+        InstagramSettings
+        | FacebookSettings
+        | ThreadsSettings
+        | TikTokSettings
+        | LinkedInSettings
+        | XSettings
+        | YouTubeSettings
+        | PinterestSettings
+        | BlueskySettings
+        | TelegramSettings
+        | None,
+        Field(
+            description='The platform settings this target was created with, echoed back in the same shape the create request accepts. For X threads, each `threadItems[].mediaItems` entry carries the hosted `url` of the stored media.'
+        ),
+    ] = None
+
+
+class CreatePostTarget(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    platform: Literal[
+        'twitter',
+        'x',
+        'instagram',
+        'tiktok',
+        'linkedin',
+        'facebook',
+        'youtube',
+        'threads',
+        'pinterest',
+        'bluesky',
+        'telegram',
+    ]
+    accountId: Annotated[
+        str, Field(description='PostZen account id or provider account id.')
+    ]
+    customContent: Annotated[
+        str | None, Field(description='Overrides shared `content` for this platform.')
+    ] = None
+    settings: Annotated[
+        InstagramSettings
+        | FacebookSettings
+        | ThreadsSettings
+        | TikTokSettings
+        | LinkedInSettings
+        | XSettings
+        | YouTubeSettings
+        | PinterestSettings
+        | BlueskySettings
+        | TelegramSettings
+        | None,
+        Field(
+            description='Platform-specific publishing options. Unknown keys are ignored.'
+        ),
+    ] = None
 
 
 class ApiPost(BaseModel):
@@ -3894,48 +3958,6 @@ class PostsListResponse(BaseModel):
     )
     posts: list[ApiPost]
     pagination: PaginationModel
-
-
-class CreatePostTarget(BaseModel):
-    model_config = ConfigDict(
-        extra='ignore',
-        populate_by_name=True,
-    )
-    platform: Literal[
-        'twitter',
-        'x',
-        'instagram',
-        'tiktok',
-        'linkedin',
-        'facebook',
-        'youtube',
-        'threads',
-        'pinterest',
-        'bluesky',
-        'telegram',
-    ]
-    accountId: Annotated[
-        str, Field(description='PostZen account id or provider account id.')
-    ]
-    customContent: Annotated[
-        str | None, Field(description='Overrides shared `content` for this platform.')
-    ] = None
-    settings: Annotated[
-        InstagramSettings
-        | FacebookSettings
-        | ThreadsSettings
-        | TikTokSettings
-        | LinkedInSettings
-        | XSettings
-        | YouTubeSettings
-        | PinterestSettings
-        | BlueskySettings
-        | TelegramSettings
-        | None,
-        Field(
-            description='Platform-specific publishing options. Unknown keys are ignored.'
-        ),
-    ] = None
 
 
 class CreatePostRequest(BaseModel):
