@@ -46,7 +46,7 @@ class CommentAutomationsResource(BaseResource[Any]):
         data = await self._client._aget('/v1/comment-automations', params=params)
         return CommentAutomationListResponse.model_validate(data)
 
-    def create_comment_automation(self, *, account_id: str, name: str, profile_id: str | None = None, trigger: str | None = 'comment', platform_post_id: str | None = None, post_id: str | None = None, post_title: str | None = None, keywords: list[str] | None = None, match_mode: str | None = 'contains', exclude_keywords: list[str] | None = None, typo_tolerance: bool | None = False, dm_message: str | None = None, dm_message_variations: list[str] | None = None, buttons: list[dict[str, Any]] | None = None, template: dict[str, Any] | None = None, comment_reply: str | None = None, comment_reply_variations: list[str] | None = None, dm_delay_seconds: int | None = 0, comment_reply_delay_seconds: int | None = 0, is_active: bool | None = True, link_tracking: bool | None = False, audience: dict[str, Any] | None = None, follow_gate: dict[str, Any] | None = None) -> CommentAutomationResponse:
+    def create_comment_automation(self, *, account_id: str, name: str, profile_id: str | None = None, trigger: str | None = 'comment', platform_post_id: str | None = None, post_id: str | None = None, post_title: str | None = None, keywords: list[str] | None = None, match_mode: str | None = 'contains', exclude_keywords: list[str] | None = None, typo_tolerance: bool | None = False, dm_message: str | None = None, dm_message_variations: list[str] | None = None, buttons: list[dict[str, Any]] | None = None, template: dict[str, Any] | None = None, comment_reply: str | None = None, comment_reply_variations: list[str] | None = None, dm_delay_seconds: int | None = 0, comment_reply_delay_seconds: int | None = 0, is_active: bool | None = True, link_tracking: bool | None = False, audience: dict[str, Any] | None = None, opening_dm: Any | None = None, follow_gate: dict[str, Any] | None = None) -> CommentAutomationResponse:
         """Create a comment automation."""
         if keywords is None:
             keywords = []
@@ -81,12 +81,13 @@ class CommentAutomationsResource(BaseResource[Any]):
             is_active=is_active,
             link_tracking=link_tracking,
             audience=audience,
+            opening_dm=opening_dm,
             follow_gate=follow_gate,
         )
         data = self._client._post('/v1/comment-automations', data=payload)
         return CommentAutomationResponse.model_validate(data)
 
-    async def acreate_comment_automation(self, *, account_id: str, name: str, profile_id: str | None = None, trigger: str | None = 'comment', platform_post_id: str | None = None, post_id: str | None = None, post_title: str | None = None, keywords: list[str] | None = None, match_mode: str | None = 'contains', exclude_keywords: list[str] | None = None, typo_tolerance: bool | None = False, dm_message: str | None = None, dm_message_variations: list[str] | None = None, buttons: list[dict[str, Any]] | None = None, template: dict[str, Any] | None = None, comment_reply: str | None = None, comment_reply_variations: list[str] | None = None, dm_delay_seconds: int | None = 0, comment_reply_delay_seconds: int | None = 0, is_active: bool | None = True, link_tracking: bool | None = False, audience: dict[str, Any] | None = None, follow_gate: dict[str, Any] | None = None) -> CommentAutomationResponse:
+    async def acreate_comment_automation(self, *, account_id: str, name: str, profile_id: str | None = None, trigger: str | None = 'comment', platform_post_id: str | None = None, post_id: str | None = None, post_title: str | None = None, keywords: list[str] | None = None, match_mode: str | None = 'contains', exclude_keywords: list[str] | None = None, typo_tolerance: bool | None = False, dm_message: str | None = None, dm_message_variations: list[str] | None = None, buttons: list[dict[str, Any]] | None = None, template: dict[str, Any] | None = None, comment_reply: str | None = None, comment_reply_variations: list[str] | None = None, dm_delay_seconds: int | None = 0, comment_reply_delay_seconds: int | None = 0, is_active: bool | None = True, link_tracking: bool | None = False, audience: dict[str, Any] | None = None, opening_dm: Any | None = None, follow_gate: dict[str, Any] | None = None) -> CommentAutomationResponse:
         """Create a comment automation (async)."""
         if keywords is None:
             keywords = []
@@ -121,6 +122,7 @@ class CommentAutomationsResource(BaseResource[Any]):
             is_active=is_active,
             link_tracking=link_tracking,
             audience=audience,
+            opening_dm=opening_dm,
             follow_gate=follow_gate,
         )
         data = await self._client._apost('/v1/comment-automations', data=payload)
@@ -136,7 +138,7 @@ class CommentAutomationsResource(BaseResource[Any]):
         data = await self._client._aget(f"/v1/comment-automations/{automation_id}")
         return CommentAutomationDetailResponse.model_validate(data)
 
-    def update_comment_automation(self, automation_id: str, *, profile_id: str | None = None, name: str | None = None, trigger: str | None = None, platform_post_id: str | None = None, post_id: str | None = None, post_title: str | None = None, keywords: list[str] | None = None, match_mode: str | None = None, exclude_keywords: list[str] | None = None, typo_tolerance: bool | None = None, dm_message: str | None = None, dm_message_variations: list[str] | None = None, buttons: list[dict[str, Any]] | None = None, template: Any | None = None, comment_reply: str | None = None, comment_reply_variations: list[str] | None = None, dm_delay_seconds: int | None = None, comment_reply_delay_seconds: int | None = None, is_active: bool | None = None, link_tracking: bool | None = None, audience: Any | None = None, follow_gate: Any | None = None) -> CommentAutomationResponse:
+    def update_comment_automation(self, automation_id: str, *, profile_id: str | None = None, name: str | None = None, trigger: str | None = None, platform_post_id: str | None = None, post_id: str | None = None, post_title: str | None = None, keywords: list[str] | None = None, match_mode: str | None = None, exclude_keywords: list[str] | None = None, typo_tolerance: bool | None = None, dm_message: str | None = None, dm_message_variations: list[str] | None = None, buttons: list[dict[str, Any]] | None = None, template: Any | None = None, comment_reply: str | None = None, comment_reply_variations: list[str] | None = None, dm_delay_seconds: int | None = None, comment_reply_delay_seconds: int | None = None, is_active: bool | None = None, link_tracking: bool | None = None, audience: Any | None = None, opening_dm: Any | None = None, follow_gate: Any | None = None) -> CommentAutomationResponse:
         """Update a comment automation."""
         payload = self._build_payload(
             profile_id=profile_id,
@@ -160,12 +162,13 @@ class CommentAutomationsResource(BaseResource[Any]):
             is_active=is_active,
             link_tracking=link_tracking,
             audience=audience,
+            opening_dm=opening_dm,
             follow_gate=follow_gate,
         )
         data = self._client._patch(f"/v1/comment-automations/{automation_id}", data=payload)
         return CommentAutomationResponse.model_validate(data)
 
-    async def aupdate_comment_automation(self, automation_id: str, *, profile_id: str | None = None, name: str | None = None, trigger: str | None = None, platform_post_id: str | None = None, post_id: str | None = None, post_title: str | None = None, keywords: list[str] | None = None, match_mode: str | None = None, exclude_keywords: list[str] | None = None, typo_tolerance: bool | None = None, dm_message: str | None = None, dm_message_variations: list[str] | None = None, buttons: list[dict[str, Any]] | None = None, template: Any | None = None, comment_reply: str | None = None, comment_reply_variations: list[str] | None = None, dm_delay_seconds: int | None = None, comment_reply_delay_seconds: int | None = None, is_active: bool | None = None, link_tracking: bool | None = None, audience: Any | None = None, follow_gate: Any | None = None) -> CommentAutomationResponse:
+    async def aupdate_comment_automation(self, automation_id: str, *, profile_id: str | None = None, name: str | None = None, trigger: str | None = None, platform_post_id: str | None = None, post_id: str | None = None, post_title: str | None = None, keywords: list[str] | None = None, match_mode: str | None = None, exclude_keywords: list[str] | None = None, typo_tolerance: bool | None = None, dm_message: str | None = None, dm_message_variations: list[str] | None = None, buttons: list[dict[str, Any]] | None = None, template: Any | None = None, comment_reply: str | None = None, comment_reply_variations: list[str] | None = None, dm_delay_seconds: int | None = None, comment_reply_delay_seconds: int | None = None, is_active: bool | None = None, link_tracking: bool | None = None, audience: Any | None = None, opening_dm: Any | None = None, follow_gate: Any | None = None) -> CommentAutomationResponse:
         """Update a comment automation (async)."""
         payload = self._build_payload(
             profile_id=profile_id,
@@ -189,6 +192,7 @@ class CommentAutomationsResource(BaseResource[Any]):
             is_active=is_active,
             link_tracking=link_tracking,
             audience=audience,
+            opening_dm=opening_dm,
             follow_gate=follow_gate,
         )
         data = await self._client._apatch(f"/v1/comment-automations/{automation_id}", data=payload)

@@ -83,7 +83,7 @@ class CommentAutomationLog(BaseModel):
     status: Annotated[
         Literal['pending', 'sent', 'failed', 'skipped', 'gated'],
         Field(
-            description='gated: the follow-gate confirmation DM went out and we are waiting for the tap; it flips to sent or skipped when they tap. An unsuccessful audience check keeps the gate open for another tap.'
+            description='gated: a button DM (Opening DM or follow request) went out and we are waiting for the tap; it flips to sent or skipped when they tap. A tap from someone who still does not follow keeps it gated for another tap.'
         ),
     ]
     buttonsDropped: bool | None = None
@@ -91,6 +91,12 @@ class CommentAutomationLog(BaseModel):
     nextDueAt: datetime | None = None
     createdAt: datetime
     updatedAt: datetime
+    gateStage: Annotated[
+        Literal['opening', 'follow'] | None,
+        Field(
+            description='Which button DM a gated log is waiting on: `opening` (the Opening DM) or `follow` (the follow request).'
+        ),
+    ] = None
     gateMessageId: str | None = None
     commenterIgsid: str | None = None
     gateSentAt: Annotated[
@@ -99,13 +105,19 @@ class CommentAutomationLog(BaseModel):
     gateTappedAt: Annotated[
         float | None, Field(description='Unix timestamp in milliseconds.')
     ] = None
-    gateAttempts: Annotated[int | None, Field(ge=0)] = None
+    gateAttempts: Annotated[
+        int | None,
+        Field(
+            description='Follow requests and not-following replies sent after taps.',
+            ge=0,
+        ),
+    ] = None
     followerCount: Annotated[int | None, Field(ge=0)] = None
     followStatus: Literal['follower', 'non_follower', 'unknown'] | None = None
     gateDropped: Annotated[
         bool | None,
         Field(
-            description='Meta rejected the postback template and delivery failed open.'
+            description='Meta rejected the Opening DM template and delivery failed open: the DM was sent without the audience check.'
         ),
     ] = None
 
@@ -2687,9 +2699,32 @@ class CommentAutomationAudience(BaseModel):
     whenUnknown: Annotated[
         Literal['send', 'skip', 'verify'] | None,
         Field(
-            description='What to do when Instagram will not reveal the follow relationship. `send` (default) - deliver the DM anyway (fails open). `skip` - stay silent. `verify` - send `followGate.message` with a confirm button. Tapping it is a message, which grants consent, so the re-check on the tap resolves and the real DM (or `followGate.notFollowingMessage`) follows automatically.'
+            description='Applies after the Opening DM tap, when Instagram still will not reveal the follow relationship. `send` (default) - deliver the DM anyway (fails open). `skip` - stay silent. `verify` - treat them as not following, so followerStatus=follower sends the follow request (`followGate.message`); tapping its button re-checks.'
         ),
     ] = 'send'
+
+
+class CommentAutomationOpeningDm(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: Annotated[
+        str | None,
+        Field(
+            description='Trimmed. Empty or omitted uses the default.',
+            max_length=640,
+            min_length=1,
+        ),
+    ] = "Hey! Thanks so much for your interest 😊\n\nTap below and I'll send you the link ✨"
+    buttonLabel: Annotated[
+        str | None,
+        Field(
+            description='Trimmed. Empty or omitted uses the default.',
+            max_length=20,
+            min_length=1,
+        ),
+    ] = 'Send me the link'
 
 
 class CommentAutomationFollowGate(BaseModel):
@@ -2697,20 +2732,30 @@ class CommentAutomationFollowGate(BaseModel):
         extra='ignore',
         populate_by_name=True,
     )
-    message: Annotated[str | None, Field(max_length=640, min_length=1)] = (
-        'Follow us to get the link, then tap the button below 👇'
-    )
-    buttonLabel: Annotated[str | None, Field(max_length=20, min_length=1)] = (
-        "I'm following"
-    )
+    message: Annotated[
+        str | None,
+        Field(
+            description='The follow request sent after the Opening DM tap to people who do not follow yet.',
+            max_length=640,
+            min_length=1,
+        ),
+    ] = 'Follow us to get the link, then tap the button below 👇'
+    buttonLabel: Annotated[
+        str | None,
+        Field(
+            description='Label of the button on the follow request. Tapping it re-checks the follow.',
+            max_length=20,
+            min_length=1,
+        ),
+    ] = "I'm following"
     notFollowingMessage: Annotated[
         str | None,
         Field(
-            description='Sent to a commenter we know does not follow (followerStatus=follower). Omit to stay silent on a keyword comment; a confirm tap always gets an answer.',
+            description='Sent when they tap the follow request button but still do not follow. The button stays, so they can follow and tap again.',
             max_length=1000,
             min_length=1,
         ),
-    ] = None
+    ] = "Looks like you're not following yet. Follow us, then tap the button again."
 
 
 class Tag(RootModel[str]):
@@ -3479,6 +3524,12 @@ class CommentAutomation(BaseModel):
     createdAt: datetime
     updatedAt: datetime
     audience: CommentAutomationAudience
+    openingDm: Annotated[
+        CommentAutomationOpeningDm,
+        Field(
+            description='The Opening DM that actually goes out: the stored one, the defaults when `audience` filters by followers, or null when off.'
+        ),
+    ]
     followGate: CommentAutomationFollowGate | None = None
 
 
@@ -3587,6 +3638,12 @@ class CommentAutomationCreateRequest(BaseModel):
     isActive: bool | None = True
     linkTracking: Literal[False] | None = False
     audience: CommentAutomationAudience | None = None
+    openingDm: Annotated[
+        CommentAutomationOpeningDm | None,
+        Field(
+            description='Send an object (even `{}` for the defaults) to turn the Opening DM on. Omit to leave it off, unless `audience` filters by followers.'
+        ),
+    ] = None
     followGate: CommentAutomationFollowGate | None = None
 
 
@@ -3694,6 +3751,12 @@ class CommentAutomationUpdateRequest(BaseModel):
     isActive: bool | None = True
     linkTracking: Literal[False] | None = False
     audience: CommentAutomationAudience | None = None
+    openingDm: Annotated[
+        CommentAutomationOpeningDm | None,
+        Field(
+            description='Send null to turn the Opening DM off. A follower-based `audience` still sends the defaults.'
+        ),
+    ] = None
     followGate: CommentAutomationFollowGate | None = None
 
 
