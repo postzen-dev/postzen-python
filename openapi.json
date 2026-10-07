@@ -35,7 +35,7 @@
 		},
 		{
 			"name": "Posts",
-			"description": "Create drafts, scheduled posts, or immediate posts, and read LinkedIn comments and reactions on published organization posts."
+			"description": "Create drafts, scheduled posts, or immediate posts, and read LinkedIn comments and reactions on published organization posts. The LinkedIn reads arrive with company-page posting, which is not available yet, pending LinkedIn's approval of PostZen's Community Management API access."
 		},
 		{
 			"name": "Inbox",
@@ -1425,12 +1425,12 @@
 				],
 				"operationId": "listPosts",
 				"summary": "List posts",
-				"description": "Returns posts created for the profiles available to the API key, newest first. Read-only and read-write API keys are accepted. Published posts include a `platformPostUrl` for each published platform target. Results are capped to the 1000 most recent matching posts.",
+				"description": "Returns posts the API key can access, newest first. A post's profiles are the profiles of its target accounts, and a key limited to selected profiles only sees posts whose accounts all sit in profiles it can access. Read-only and read-write API keys are accepted. Published posts include a `platformPostId` and `platformPostUrl` for each published platform target. Results are capped to the 1000 most recent matching posts.",
 				"parameters": [
 					{
 						"name": "profileId",
 						"in": "query",
-						"description": "Filter posts by profile id.",
+						"description": "Return posts that target at least one account in this profile. A post whose accounts span several profiles is listed under each of them.",
 						"schema": {
 							"type": "string"
 						}
@@ -1550,6 +1550,7 @@
 														"isActive": true
 													},
 													"status": "published",
+													"platformPostId": "1934567890123456789",
 													"platformPostUrl": "https://x.com/acme/status/1934567890123456789"
 												}
 											]
@@ -1588,7 +1589,7 @@
 				],
 				"operationId": "createPost",
 				"summary": "Create a post",
-				"description": "Creates a draft, scheduled post, or immediate post. This endpoint requires a read-write API key. Provide exactly one creation mode: `publishNow`, `scheduledFor`, or `isDraft`.",
+				"description": "Creates a draft, scheduled post, immediate post, or queued post. This endpoint requires a read-write API key. Provide exactly one creation mode: `publishNow`, `scheduledFor`, `isDraft`, or `queuedFromProfile` (optionally with `queueId`), which claims the next free slot in that profile's queue and returns it as `scheduledFor`. The accounts in `platforms` can belong to different profiles; an API key limited to selected profiles must have access to the profile of every account.",
 				"parameters": [
 					{
 						"name": "x-request-id",
@@ -1669,6 +1670,7 @@
 													"isActive": true
 												},
 												"status": "published",
+												"platformPostId": "1934567890123456789",
 												"platformPostUrl": "https://x.com/acme/status/1934567890123456789"
 											}
 										]
@@ -1714,7 +1716,7 @@
 				],
 				"operationId": "getPost",
 				"summary": "Get a post",
-				"description": "Returns one post when it belongs to a profile available to the API key. Missing and inaccessible posts both return 404.",
+				"description": "Returns one post when the API key can access the profile of every account the post targets. Missing and inaccessible posts both return 404.",
 				"responses": {
 					"200": {
 						"description": "Post returned.",
@@ -1754,7 +1756,7 @@
 				],
 				"operationId": "updatePost",
 				"summary": "Update a post",
-				"description": "Updates an editable post. Every body field is optional; omitted fields keep their current values, and omitting all timing fields keeps the current scheduling and draft status. At most one of `publishNow`, `scheduledFor`, `isDraft`, or `queuedFromProfile` may select a new timing mode.",
+				"description": "Updates an editable post. Every body field is optional; omitted fields keep their current values, and omitting all timing fields keeps the current scheduling and draft status. At most one of `publishNow`, `scheduledFor`, `isDraft`, or `queuedFromProfile` may select a new timing mode. Accounts in `platforms` can belong to different profiles; the API key needs access to all of them.",
 				"requestBody": {
 					"required": true,
 					"content": {
@@ -1865,7 +1867,7 @@
 				],
 				"operationId": "listPostComments",
 				"summary": "List comments on a LinkedIn post",
-				"description": "Returns the comments LinkedIn holds for a post published through PostZen. LinkedIn only, and organization (company page) posts only. The post's LinkedIn connection must hold `r_organization_social_feed`, which LinkedIn ships with its Community Management API product — reconnect the account if it was connected before company-page posting was enabled. A personal (member) post always returns `403 personalPostUnsupported`: reading a member's own comments and reactions needs `r_member_social_feed`, which LinkedIn grants to select developers only. Read-only and read-write API keys are accepted.",
+				"description": "Returns the comments LinkedIn holds for a post published through PostZen. LinkedIn only, and organization (company page) posts only. The post's LinkedIn connection must hold `r_organization_social_feed`, which LinkedIn ships with its Community Management API product. Not available yet: company-page posting is waiting on LinkedIn's approval of PostZen's Community Management API access, and until then this endpoint returns `403 orgScopesDisabled`. A personal (member) post always returns `403 personalPostUnsupported`: reading a member's own comments and reactions needs `r_member_social_feed`, which LinkedIn grants to select developers only. Read-only and read-write API keys are accepted.",
 				"parameters": [
 					{
 						"name": "accountId",
@@ -1928,7 +1930,7 @@
 						"$ref": "#/components/responses/Unauthorized"
 					},
 					"403": {
-						"description": "The post was authored by a member rather than a company page (`personalPostUnsupported`), the API key cannot access the post's profile (`forbidden`), organization engagement reads are disabled on the deployment (`orgScopesDisabled`), or the connection is missing `r_organization_social_feed` (`platformCapabilityMissing`).",
+						"description": "The post was authored by a member rather than a company page (`personalPostUnsupported`), the API key cannot access every profile the post targets (`forbidden`), organization engagement reads are disabled on the deployment (`orgScopesDisabled`), or the connection is missing `r_organization_social_feed` (`platformCapabilityMissing`).",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -2041,7 +2043,7 @@
 				],
 				"operationId": "listPostReactions",
 				"summary": "List reactions on a LinkedIn post",
-				"description": "Returns the individual reactions LinkedIn holds for a post published through PostZen, plus a per-type count of the returned page. LinkedIn only, and organization (company page) posts only. The post's LinkedIn connection must hold `r_organization_social_feed`, which LinkedIn ships with its Community Management API product — reconnect the account if it was connected before company-page posting was enabled. A personal (member) post always returns `403 personalPostUnsupported`: reading a member's own comments and reactions needs `r_member_social_feed`, which LinkedIn grants to select developers only. Read-only and read-write API keys are accepted.",
+				"description": "Returns the individual reactions LinkedIn holds for a post published through PostZen, plus a per-type count of the returned page. LinkedIn only, and organization (company page) posts only. The post's LinkedIn connection must hold `r_organization_social_feed`, which LinkedIn ships with its Community Management API product. Not available yet: company-page posting is waiting on LinkedIn's approval of PostZen's Community Management API access, and until then this endpoint returns `403 orgScopesDisabled`. A personal (member) post always returns `403 personalPostUnsupported`: reading a member's own comments and reactions needs `r_member_social_feed`, which LinkedIn grants to select developers only. Read-only and read-write API keys are accepted.",
 				"parameters": [
 					{
 						"name": "accountId",
@@ -2108,7 +2110,7 @@
 						"$ref": "#/components/responses/Unauthorized"
 					},
 					"403": {
-						"description": "The post was authored by a member rather than a company page (`personalPostUnsupported`), the API key cannot access the post's profile (`forbidden`), organization engagement reads are disabled on the deployment (`orgScopesDisabled`), or the connection is missing `r_organization_social_feed` (`platformCapabilityMissing`).",
+						"description": "The post was authored by a member rather than a company page (`personalPostUnsupported`), the API key cannot access every profile the post targets (`forbidden`), organization engagement reads are disabled on the deployment (`orgScopesDisabled`), or the connection is missing `r_organization_social_feed` (`platformCapabilityMissing`).",
 						"content": {
 							"application/json": {
 								"schema": {
@@ -4507,7 +4509,7 @@
 				],
 				"operationId": "getAnalytics",
 				"summary": "Get post analytics",
-				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns one post when `postId` is supplied. Otherwise returns a paginated analytics list with aggregate overview metrics.",
+				"description": "Returns one post when `postId` is supplied. Otherwise returns a paginated analytics list with aggregate overview metrics.",
 				"security": [
 					{
 						"bearerAuth": []
@@ -4567,7 +4569,7 @@
 					{
 						"name": "fromDate",
 						"in": "query",
-						"description": "Inclusive range start. Accepts `YYYY-MM-DD` or an ISO 8601 datetime. Defaults to 90 days before `toDate`.",
+						"description": "Inclusive range start. Defaults to 90 days before `toDate`.",
 						"schema": {
 							"$ref": "#/components/schemas/AnalyticsDate"
 						}
@@ -4575,7 +4577,7 @@
 					{
 						"name": "toDate",
 						"in": "query",
-						"description": "Inclusive range end. Accepts `YYYY-MM-DD` or an ISO 8601 datetime. Defaults to the current time.",
+						"description": "Inclusive range end. Defaults to the current time.",
 						"schema": {
 							"$ref": "#/components/schemas/AnalyticsDate"
 						}
@@ -4712,7 +4714,7 @@
 				],
 				"operationId": "getPostTimeline",
 				"summary": "Get a post analytics timeline",
-				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns one daily row per platform for a PostZen post, imported external post, or platform post id.",
+				"description": "Returns one daily row per platform for a PostZen post, imported external post, or platform post id.",
 				"security": [
 					{
 						"bearerAuth": []
@@ -4794,7 +4796,7 @@
 				],
 				"operationId": "getDailyMetrics",
 				"summary": "Get daily analytics metrics",
-				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns daily aggregate metrics and a per-platform breakdown. Publish attribution assigns lifetime metrics to the post's publish date; received attribution assigns metric deltas to the day they were observed.",
+				"description": "Returns daily aggregate metrics and a per-platform breakdown. Publish attribution assigns lifetime metrics to the post's publish date; received attribution assigns metric deltas to the day they were observed.",
 				"security": [
 					{
 						"bearerAuth": []
@@ -4912,7 +4914,7 @@
 				],
 				"operationId": "getBestTimeToPost",
 				"summary": "Get the best times to post",
-				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns historical engagement slots grouped by UTC day of week and hour, ordered by average engagement descending.",
+				"description": "Returns historical engagement slots grouped by UTC day of week and hour, ordered by average engagement descending. Hours are UTC; day_of_week uses 0 = Sunday through 6 = Saturday.",
 				"security": [
 					{
 						"bearerAuth": []
@@ -5001,7 +5003,7 @@
 				],
 				"operationId": "getFollowerStats",
 				"summary": "Get follower statistics",
-				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nReturns follower history and growth for connected accounts at daily, weekly, or monthly granularity.",
+				"description": "Returns follower history and growth for connected accounts at daily, weekly, or monthly granularity.",
 				"security": [
 					{
 						"bearerAuth": []
@@ -5105,7 +5107,7 @@
 				],
 				"operationId": "syncExternalPosts",
 				"summary": "Synchronize external posts",
-				"description": "> **Coming soon** — Analytics endpoints are being rolled out and may return empty data until the rollout completes.\n\nFetches an account's latest posts published directly on its platform. Supplying `url` or `postId` searches for a specific post. Requests made within the per-account debounce window return cached results with `synced.skipped` set to true.",
+				"description": "Fetches an account's latest posts published directly on its platform. Supplying `url` or `postId` searches for a specific post. Requests made within the per-account debounce window return cached results with `synced.skipped` set to true.",
 				"security": [
 					{
 						"bearerAuth": []
@@ -8356,6 +8358,7 @@
 			},
 			"AnalyticsMetricTotals": {
 				"type": "object",
+				"description": "The eight normalized metrics returned for every platform. A platform that reports a single view count returns it in both `views` and `impressions`. A metric the platform does not report is returned as `0`, so check the per-platform coverage in the API reference before reading a zero as no activity. `reach` is currently reported for Instagram only.",
 				"required": [
 					"impressions",
 					"reach",
@@ -8407,7 +8410,7 @@
 						"properties": {
 							"engagementRate": {
 								"type": "number",
-								"description": "Interaction count divided by impressions, multiplied by 100 and rounded to two decimals."
+								"description": "Interactions (likes + comments + shares + saves + clicks) divided by impressions, multiplied by 100 and rounded to two decimals. On platforms that report no impressions, such as Bluesky, the value is the interaction count multiplied by 100 and is not a rate."
 							},
 							"lastUpdated": {
 								"type": [
@@ -8647,7 +8650,7 @@
 					},
 					"truncated": {
 						"type": "boolean",
-						"description": "True when the requested window contained more posts than a single response can scan. `pagination.total` and `overview` then describe the most recent slice of the window rather than all of it; narrow `dateFrom`/`dateTo`, `accountId`, or `platform` to get exact totals."
+						"description": "True when the requested window contained more posts than a single response can scan. `pagination.total` and `overview` then describe the most recent slice of the window rather than all of it; narrow `fromDate`/`toDate`, `accountId`, or `platform` to get exact totals."
 					}
 				}
 			},
@@ -8785,7 +8788,8 @@
 			"BestTimeResponse": {
 				"type": "object",
 				"required": [
-					"slots"
+					"slots",
+					"timezone"
 				],
 				"properties": {
 					"slots": {
@@ -8796,7 +8800,8 @@
 								"day_of_week",
 								"hour",
 								"avg_engagement",
-								"post_count"
+								"post_count",
+								"day_name"
 							],
 							"properties": {
 								"day_of_week": {
@@ -8808,16 +8813,37 @@
 								"hour": {
 									"type": "integer",
 									"minimum": 0,
-									"maximum": 23
+									"maximum": 23,
+									"description": "Hour of day in UTC (0–23)."
 								},
 								"avg_engagement": {
 									"type": "number"
 								},
 								"post_count": {
 									"type": "number"
+								},
+								"day_name": {
+									"type": "string",
+									"enum": [
+										"Sunday",
+										"Monday",
+										"Tuesday",
+										"Wednesday",
+										"Thursday",
+										"Friday",
+										"Saturday"
+									],
+									"description": "UTC weekday name corresponding to day_of_week (0 = Sunday)."
 								}
 							}
 						}
+					},
+					"timezone": {
+						"type": "string",
+						"enum": [
+							"UTC"
+						],
+						"description": "Timezone used for every slot weekday and hour."
 					}
 				}
 			},
@@ -10837,7 +10863,7 @@
 					},
 					"queuedFromProfile": {
 						"type": "string",
-						"description": "Profile id whose queue places the post. PostZen assigns the next free slot and returns it as `scheduledFor`. Do not call `GET /v1/queue/next-slot` and pass the result as `scheduledFor`: the slot is only claimed by the create call itself, so a fetched slot can be taken by another request before yours arrives, and the post would be scheduled outside the queue."
+						"description": "Profile id whose queue places the post. It can be any profile the API key can access and does not have to hold the target accounts; it is required when the accounts span more than one profile. PostZen assigns the next free slot and returns it as `scheduledFor`. Do not call `GET /v1/queue/next-slot` and pass the result as `scheduledFor`: the slot is only claimed by the create call itself, so a fetched slot can be taken by another request before yours arrives, and the post would be scheduled outside the queue."
 					},
 					"queueId": {
 						"type": "string",
@@ -11007,7 +11033,40 @@
 							"everyone",
 							"accountsYouFollow",
 							"mentionedOnly"
-						]
+						],
+						"description": "Who can reply. Omit to let everyone reply. When threadItems is set, applies only to the first post."
+					},
+					"threadItems": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 25,
+						"description": "Publish this target as a thread of 1–25 posts, in order. The first item is the root post and each later item is published as a reply to the previous one. When set, the target's `content`/`customContent` and the post's top-level `mediaItems` are not published to Threads; they still apply to the post's other targets. `platformPostUrl` on the result is the root post's URL. A one-item thread publishes like a plain post. Each item supports up to 500 characters and 10 images/videos. `replyControl` applies only to the first post.",
+						"items": {
+							"$ref": "#/components/schemas/ThreadsThreadItem"
+						}
+					}
+				},
+				"description": "Threads target settings. Set `threadItems` to publish a chain of 1–25 posts, each with up to 500 characters and 10 images/videos. The first item is the root and each later item replies to the previous one. When set, the target's `content`/`customContent` and the post's top-level `mediaItems` are not published to Threads; they still apply to other targets. `replyControl` applies only to the first post."
+			},
+			"ThreadsThreadItem": {
+				"type": "object",
+				"description": "One post in a Threads thread. Each item needs text, media, or both.",
+				"required": [
+					"content"
+				],
+				"properties": {
+					"content": {
+						"type": "string",
+						"maxLength": 500,
+						"description": "Text of this post in the thread, up to 500 characters. May be empty only when the item has `mediaItems`."
+					},
+					"mediaItems": {
+						"type": "array",
+						"maxItems": 10,
+						"description": "Up to 10 images/videos attached to this post, in the same format as the post's top-level `mediaItems`. Images (including GIF media) and videos can be mixed within an item.",
+						"items": {
+							"$ref": "#/components/schemas/PostMediaItem"
+						}
 					}
 				}
 			},
@@ -11081,12 +11140,12 @@
 					"organizationUrn": {
 						"type": "string",
 						"pattern": "^(urn:li:organization:[0-9]+|[0-9]+)$",
-						"description": "Publish as a LinkedIn company page instead of the connected member. Accepts either the full URN (`urn:li:organization:12345`) or the bare numeric page id (`12345`), which PostZen expands to the URN. The connection must have been authorized with the organization scopes — reconnect the account if it was connected before company-page posting was enabled. Also accepted as `organizationId` / `organization_id`."
+						"description": "Not available yet: company-page posting is waiting on LinkedIn's approval of PostZen's Community Management API access, and LinkedIn rejects posts that set this today, so leave it unset. Once available, this publishes as a LinkedIn company page instead of the connected member. Accepts either the full URN (`urn:li:organization:12345`) or the bare numeric page id (`12345`), which PostZen expands to the URN. The connection must have been authorized with the organization scopes. Also accepted as `organizationId` / `organization_id`."
 					},
 					"firstComment": {
 						"type": "string",
 						"maxLength": 1250,
-						"description": "Comment posted by the same author immediately after the post goes live. LinkedIn's comment composer caps this at 1,250 characters, tighter than the 3,000-character post body. Best-effort: a failure here is logged and never fails the post, and the post is never retried because of it."
+						"description": "Comment posted by the same author immediately after the post goes live. LinkedIn's comment composer caps this at 1,250 characters, tighter than the 3,000-character post body. Best-effort: a failure here is logged and never fails the post, and the post is never retried because of it. Not available yet on LinkedIn: first comments wait on the same LinkedIn approval as company-page posting, so today the post publishes without the comment."
 					},
 					"disableLinkPreview": {
 						"type": "boolean",
@@ -11103,7 +11162,7 @@
 							"pattern": "^[A-Z]{2}$"
 						},
 						"maxItems": 25,
-						"description": "Restrict who sees the post to these countries, as uppercase ISO 3166-1 alpha-2 codes (for example `[\"US\", \"CA\"]`). Up to 25 countries, and organization posts only — supplying this without `organizationUrn` is a validation error."
+						"description": "Restrict who sees the post to these countries, as uppercase ISO 3166-1 alpha-2 codes (for example `[\"US\", \"CA\"]`). Up to 25 countries, and organization posts only — supplying this without `organizationUrn` is a validation error. Not available yet, because it requires `organizationUrn`."
 					}
 				}
 			},
@@ -11285,7 +11344,8 @@
 					"status",
 					"scheduledFor",
 					"timezone",
-					"platforms"
+					"platforms",
+					"mediaItems"
 				],
 				"properties": {
 					"_id": {
@@ -11325,6 +11385,25 @@
 						"items": {
 							"$ref": "#/components/schemas/ApiPostPlatformResult"
 						}
+					},
+					"mediaItems": {
+						"type": "array",
+						"description": "Attached media in stored order, with resolved hosted URLs and optional titles (alt text). Always present; empty when there is no available media.",
+						"items": {
+							"type": "object",
+							"required": [
+								"url"
+							],
+							"properties": {
+								"url": {
+									"type": "string",
+									"format": "uri"
+								},
+								"title": {
+									"type": "string"
+								}
+							}
+						}
 					}
 				}
 			},
@@ -11354,6 +11433,17 @@
 							"canceled"
 						]
 					},
+					"platformPostId": {
+						"type": "string",
+						"description": "The platform's own id for the published post. Present as soon as this target is published, so it can be used right away with the inbox and analytics endpoints. For a thread, this is the root post's id."
+					},
+					"platformPostIds": {
+						"type": "array",
+						"items": {
+							"type": "string"
+						},
+						"description": "X and Threads thread targets only: the platform id of every post in the thread, root first."
+					},
 					"platformPostUrl": {
 						"type": "string",
 						"format": "uri"
@@ -11367,7 +11457,7 @@
 					},
 					"settings": {
 						"$ref": "#/components/schemas/PostPlatformSettings",
-						"description": "The platform settings this target was created with, echoed back in the same shape the create request accepts. For X threads, each `threadItems[].mediaItems` entry carries the hosted `url` of the stored media."
+						"description": "The platform settings this target was created with, echoed back in the same shape the create request accepts. For X and Threads threads, each `threadItems[].mediaItems` entry carries the hosted `url` of the stored media."
 					}
 				}
 			},
@@ -12436,7 +12526,7 @@
 						"type": "string",
 						"format": "uri",
 						"pattern": "^https://",
-						"description": "Public HTTPS image URL that Meta fetches. `POST /v1/media/presign` returns one that qualifies."
+						"description": "Public HTTPS image URL that Meta fetches. A `publicUrl` from `POST /v1/media/presign` qualifies and is kept for as long as an automation uses it; upload the bytes before saving the automation."
 					},
 					"buttons": {
 						"type": "array",

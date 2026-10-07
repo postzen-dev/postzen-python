@@ -293,7 +293,7 @@ class AnalyticsMetrics(AnalyticsMetricTotals):
     engagementRate: Annotated[
         float,
         Field(
-            description='Interaction count divided by impressions, multiplied by 100 and rounded to two decimals.'
+            description='Interactions (likes + comments + shares + saves + clicks) divided by impressions, multiplied by 100 and rounded to two decimals. On platforms that report no impressions, such as Bluesky, the value is the interaction count multiplied by 100 and is not a rate.'
         ),
     ]
     lastUpdated: datetime | None
@@ -466,9 +466,17 @@ class Slot(BaseModel):
     day_of_week: Annotated[
         int, Field(description='UTC day of week, where 0 is Sunday.', ge=0, le=6)
     ]
-    hour: Annotated[int, Field(ge=0, le=23)]
+    hour: Annotated[int, Field(description='Hour of day in UTC (0–23).', ge=0, le=23)]
     avg_engagement: float
     post_count: float
+    day_name: Annotated[
+        Literal[
+            'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'
+        ],
+        Field(
+            description='UTC weekday name corresponding to day_of_week (0 = Sunday).'
+        ),
+    ]
 
 
 class BestTimeResponse(BaseModel):
@@ -477,6 +485,10 @@ class BestTimeResponse(BaseModel):
         populate_by_name=True,
     )
     slots: list[Slot]
+    timezone: Annotated[
+        Literal['UTC'],
+        Field(description='Timezone used for every slot weekday and hour.'),
+    ]
 
 
 class Account1(BaseModel):
@@ -1794,14 +1806,25 @@ class FacebookSettings(BaseModel):
     firstComment: str | None = None
 
 
-class ThreadsSettings(BaseModel):
+class ThreadsThreadItem(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
         populate_by_name=True,
     )
-    replyControl: Literal['everyone', 'accountsYouFollow', 'mentionedOnly'] | None = (
-        None
-    )
+    content: Annotated[
+        str,
+        Field(
+            description='Text of this post in the thread, up to 500 characters. May be empty only when the item has `mediaItems`.',
+            max_length=500,
+        ),
+    ]
+    mediaItems: Annotated[
+        list[PostMediaItem] | None,
+        Field(
+            description="Up to 10 images/videos attached to this post, in the same format as the post's top-level `mediaItems`. Images (including GIF media) and videos can be mixed within an item.",
+            max_length=10,
+        ),
+    ] = None
 
 
 class TikTokSettings(BaseModel):
@@ -1859,14 +1882,14 @@ class LinkedInSettings(BaseModel):
     organizationUrn: Annotated[
         str | None,
         Field(
-            description='Publish as a LinkedIn company page instead of the connected member. Accepts either the full URN (`urn:li:organization:12345`) or the bare numeric page id (`12345`), which PostZen expands to the URN. The connection must have been authorized with the organization scopes — reconnect the account if it was connected before company-page posting was enabled. Also accepted as `organizationId` / `organization_id`.',
+            description="Not available yet: company-page posting is waiting on LinkedIn's approval of PostZen's Community Management API access, and LinkedIn rejects posts that set this today, so leave it unset. Once available, this publishes as a LinkedIn company page instead of the connected member. Accepts either the full URN (`urn:li:organization:12345`) or the bare numeric page id (`12345`), which PostZen expands to the URN. The connection must have been authorized with the organization scopes. Also accepted as `organizationId` / `organization_id`.",
             pattern='^(urn:li:organization:[0-9]+|[0-9]+)$',
         ),
     ] = None
     firstComment: Annotated[
         str | None,
         Field(
-            description="Comment posted by the same author immediately after the post goes live. LinkedIn's comment composer caps this at 1,250 characters, tighter than the 3,000-character post body. Best-effort: a failure here is logged and never fails the post, and the post is never retried because of it.",
+            description="Comment posted by the same author immediately after the post goes live. LinkedIn's comment composer caps this at 1,250 characters, tighter than the 3,000-character post body. Best-effort: a failure here is logged and never fails the post, and the post is never retried because of it. Not available yet on LinkedIn: first comments wait on the same LinkedIn approval as company-page posting, so today the post publishes without the comment.",
             max_length=1250,
         ),
     ] = None
@@ -1885,7 +1908,7 @@ class LinkedInSettings(BaseModel):
     geoRestrictionCountries: Annotated[
         list[GeoRestrictionCountry] | None,
         Field(
-            description='Restrict who sees the post to these countries, as uppercase ISO 3166-1 alpha-2 codes (for example `["US", "CA"]`). Up to 25 countries, and organization posts only — supplying this without `organizationUrn` is a validation error.',
+            description='Restrict who sees the post to these countries, as uppercase ISO 3166-1 alpha-2 codes (for example `["US", "CA"]`). Up to 25 countries, and organization posts only — supplying this without `organizationUrn` is a validation error. Not available yet, because it requires `organizationUrn`.',
             max_length=25,
         ),
     ] = None
@@ -2007,6 +2030,15 @@ class TelegramSettings(BaseModel):
             description='When true, Telegram blocks forwarding and saving of the post.'
         ),
     ] = None
+
+
+class MediaItem(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    url: str
+    title: str | None = None
 
 
 class ApiPostAccount(BaseModel):
@@ -2655,7 +2687,7 @@ class CommentAutomationTemplateElement(BaseModel):
     imageUrl: Annotated[
         str,
         Field(
-            description='Public HTTPS image URL that Meta fetches. `POST /v1/media/presign` returns one that qualifies.',
+            description='Public HTTPS image URL that Meta fetches. A `publicUrl` from `POST /v1/media/presign` qualifies and is kept for as long as an automation uses it; upload the bytes before saving the automation.',
             pattern='^https://',
         ),
     ]
@@ -3847,9 +3879,30 @@ class AnalyticsListResponse(BaseModel):
     truncated: Annotated[
         bool,
         Field(
-            description='True when the requested window contained more posts than a single response can scan. `pagination.total` and `overview` then describe the most recent slice of the window rather than all of it; narrow `dateFrom`/`dateTo`, `accountId`, or `platform` to get exact totals.'
+            description='True when the requested window contained more posts than a single response can scan. `pagination.total` and `overview` then describe the most recent slice of the window rather than all of it; narrow `fromDate`/`toDate`, `accountId`, or `platform` to get exact totals.'
         ),
     ]
+
+
+class ThreadsSettings(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    replyControl: Annotated[
+        Literal['everyone', 'accountsYouFollow', 'mentionedOnly'] | None,
+        Field(
+            description='Who can reply. Omit to let everyone reply. When threadItems is set, applies only to the first post.'
+        ),
+    ] = None
+    threadItems: Annotated[
+        list[ThreadsThreadItem] | None,
+        Field(
+            description="Publish this target as a thread of 1–25 posts, in order. The first item is the root post and each later item is published as a reply to the previous one. When set, the target's `content`/`customContent` and the post's top-level `mediaItems` are not published to Threads; they still apply to the post's other targets. `platformPostUrl` on the result is the root post's URL. A one-item thread publishes like a plain post. Each item supports up to 500 characters and 10 images/videos. `replyControl` applies only to the first post.",
+            max_length=25,
+            min_length=1,
+        ),
+    ] = None
 
 
 class XSettings(BaseModel):
@@ -3895,6 +3948,18 @@ class ApiPostPlatformResult(BaseModel):
     status: Literal[
         'draft', 'scheduled', 'pending', 'publishing', 'published', 'failed', 'canceled'
     ]
+    platformPostId: Annotated[
+        str | None,
+        Field(
+            description="The platform's own id for the published post. Present as soon as this target is published, so it can be used right away with the inbox and analytics endpoints. For a thread, this is the root post's id."
+        ),
+    ] = None
+    platformPostIds: Annotated[
+        list[str] | None,
+        Field(
+            description='X and Threads thread targets only: the platform id of every post in the thread, root first.'
+        ),
+    ] = None
     platformPostUrl: str | None = None
     error: str | None = None
     customContent: Annotated[
@@ -3916,7 +3981,7 @@ class ApiPostPlatformResult(BaseModel):
         | TelegramSettings
         | None,
         Field(
-            description='The platform settings this target was created with, echoed back in the same shape the create request accepts. For X threads, each `threadItems[].mediaItems` entry carries the hosted `url` of the stored media.'
+            description='The platform settings this target was created with, echoed back in the same shape the create request accepts. For X and Threads threads, each `threadItems[].mediaItems` entry carries the hosted `url` of the stored media.'
         ),
     ] = None
 
@@ -3981,6 +4046,12 @@ class ApiPost(BaseModel):
     ] = None
     timezone: str
     platforms: list[ApiPostPlatformResult]
+    mediaItems: Annotated[
+        list[MediaItem],
+        Field(
+            description='Attached media in stored order, with resolved hosted URLs and optional titles (alt text). Always present; empty when there is no available media.'
+        ),
+    ]
 
 
 class CreatePostResponse(BaseModel):
@@ -4064,7 +4135,7 @@ class CreatePostRequest(BaseModel):
     queuedFromProfile: Annotated[
         str | None,
         Field(
-            description='Profile id whose queue places the post. PostZen assigns the next free slot and returns it as `scheduledFor`. Do not call `GET /v1/queue/next-slot` and pass the result as `scheduledFor`: the slot is only claimed by the create call itself, so a fetched slot can be taken by another request before yours arrives, and the post would be scheduled outside the queue.'
+            description='Profile id whose queue places the post. It can be any profile the API key can access and does not have to hold the target accounts; it is required when the accounts span more than one profile. PostZen assigns the next free slot and returns it as `scheduledFor`. Do not call `GET /v1/queue/next-slot` and pass the result as `scheduledFor`: the slot is only claimed by the create call itself, so a fetched slot can be taken by another request before yours arrives, and the post would be scheduled outside the queue.'
         ),
     ] = None
     queueId: Annotated[
