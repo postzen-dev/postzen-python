@@ -66,6 +66,7 @@ def api_post_payload() -> dict:
         "status": "published",
         "scheduledFor": None,
         "timezone": "UTC",
+        "mediaItems": [{"url": "https://example.com/media/launch.jpg"}],
         "platforms": [
             {
                 "platform": "instagram",
