@@ -1,6 +1,6 @@
 [project]
 name = "postzen-sdk"
-version = "2.2.0"
+version = "2.2.1"
 description = "Official Python SDK for the PostZen Public API - manage profiles, accounts, OAuth connect, media, posts, inbox, comment automations, contacts, queues, analytics, API keys, and webhooks"
 readme = "README.md"
 requires-python = ">=3.10"
