@@ -1862,7 +1862,7 @@ class LinkedInSettings(BaseModel):
     visibility: Annotated[
         Literal['PUBLIC', 'CONNECTIONS'] | None,
         Field(
-            description='Who can see the post. `CONNECTIONS` is only valid for a member (personal profile) post — combining it with `organizationUrn` is a validation error, because a company page has no connections.'
+            description='Who can see the post. Matched case-insensitively; an empty string or `null` counts as unset (defaults to `PUBLIC`), and any other non-empty value returns `400` with `settings.visibility must be PUBLIC or CONNECTIONS`. `CONNECTIONS` is only valid for a member (personal profile) post — combining it with `organizationUrn` is a validation error, because a company page has no connections.'
         ),
     ] = 'PUBLIC'
     videoTitle: Annotated[
@@ -1882,14 +1882,14 @@ class LinkedInSettings(BaseModel):
     organizationUrn: Annotated[
         str | None,
         Field(
-            description="Not available yet: company-page posting is waiting on LinkedIn's approval of PostZen's Community Management API access, and LinkedIn rejects posts that set this today, so leave it unset. Once available, this publishes as a LinkedIn company page instead of the connected member. Accepts either the full URN (`urn:li:organization:12345`) or the bare numeric page id (`12345`), which PostZen expands to the URN. The connection must have been authorized with the organization scopes. Also accepted as `organizationId` / `organization_id`.",
+            description="Not available yet: company-page posting is waiting on LinkedIn's approval of PostZen's Community Management API access. Setting this (or an alias) today fails validation with `400` and a message prefixed with the target account's display name, for example `Jane Doe: LinkedIn company-page posting is not available yet, pending LinkedIn's approval. Remove settings.organizationUrn to publish to the connected member's profile.`, before anything is stored. On `PATCH /v1/posts/{postId}` the check applies to the `platforms` you send; omitting `platforms` leaves stored targets unchecked, and a stored company-page target fails at publish time instead. Once available, this publishes as a LinkedIn company page instead of the connected member. Accepts either the full URN (`urn:li:organization:12345`) or the bare numeric page id (`12345`), which PostZen expands to the URN. The connection must hold `w_organization_social`; one that does not gets `400` with `<account name>: Reconnect this LinkedIn account to post as a company page.`. Also accepted as `organizationId` / `organization_id`.",
             pattern='^(urn:li:organization:[0-9]+|[0-9]+)$',
         ),
     ] = None
     firstComment: Annotated[
         str | None,
         Field(
-            description="Comment posted by the same author immediately after the post goes live. LinkedIn's comment composer caps this at 1,250 characters, tighter than the 3,000-character post body. Best-effort: a failure here is logged and never fails the post, and the post is never retried because of it. Not available yet on LinkedIn: first comments wait on the same LinkedIn approval as company-page posting, so today the post publishes without the comment.",
+            description="Comment posted by the same author immediately after the post goes live. LinkedIn's comment composer caps this at 1,250 characters, tighter than the 3,000-character post body. Best-effort: a failure here is logged and never fails the post, and the post is never retried because of it. Not available yet on LinkedIn: first comments wait on the same LinkedIn approval as company-page posting. Today the comment is dropped before the post is stored (the 1,250-character limit is not applied to it), the post still publishes, and the response carries a top-level `warnings` entry prefixed with the target account's display name, for example `Jane Doe: LinkedIn first comments are not available yet; this post publishes without the comment.`",
             max_length=1250,
         ),
     ] = None
@@ -4065,6 +4065,12 @@ class CreatePostResponse(BaseModel):
         'Post scheduled successfully',
         'Draft created successfully',
     ]
+    warnings: Annotated[
+        list[str] | None,
+        Field(
+            description="Non-fatal notes about settings that were accepted but not applied. Each entry is prefixed with the target account's display name, for example `Jane Doe: LinkedIn first comments are not available yet; this post publishes without the comment.` when a LinkedIn target set `firstComment`. Present only when non-empty."
+        ),
+    ] = None
 
 
 class UpdatePostResponse(BaseModel):
@@ -4074,6 +4080,12 @@ class UpdatePostResponse(BaseModel):
     )
     post: ApiPost
     message: str
+    warnings: Annotated[
+        list[str] | None,
+        Field(
+            description="Non-fatal notes about settings that were accepted but not applied. Each entry is prefixed with the target account's display name, for example `Jane Doe: LinkedIn first comments are not available yet; this post publishes without the comment.` when a LinkedIn target set `firstComment`. Present only when non-empty."
+        ),
+    ] = None
 
 
 class CreatePostReplayResponse(BaseModel):
