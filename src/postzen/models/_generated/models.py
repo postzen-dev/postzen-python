@@ -2176,6 +2176,778 @@ class ApiKeyCreateResponse(BaseModel):
     apiKey: ApiKeyWithSecret
 
 
+class WebhookEventPerson(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str | None, Field(description='Platform user id.')] = None
+    name: Annotated[str | None, Field(description='Display name.')] = None
+    username: Annotated[
+        str | None, Field(description='Handle without the leading @.')
+    ] = None
+
+
+class WebhookPostEventTarget(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    accountId: Annotated[str, Field(description='PostZen account id.')]
+    profileId: Annotated[
+        str,
+        Field(
+            description="The target account's profile. A post's targets can span profiles."
+        ),
+    ]
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ],
+        Field(
+            description='Platform of the account an event refers to. Webhook payloads use `x` for X (Twitter).'
+        ),
+    ]
+    status: Annotated[
+        Literal[
+            'draft',
+            'scheduled',
+            'queued',
+            'publishing',
+            'published',
+            'partially_failed',
+            'failed',
+            'canceled',
+        ],
+        Field(description='Status of one platform target when the event was created.'),
+    ]
+    platformPostUrl: Annotated[
+        str | None,
+        Field(
+            description='Public URL of the published post, when the platform returned one.'
+        ),
+    ] = None
+    errorCode: Annotated[
+        str | None, Field(description='Present when the target failed.')
+    ] = None
+
+
+class WebhookPostEventPost(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='PostZen post id.')]
+    profileId: Annotated[str, Field(description="The post's primary profile.")]
+    status: Annotated[
+        Literal['scheduled', 'published', 'partially_failed', 'failed', 'canceled'],
+        Field(
+            description='`scheduled` for post.scheduled, `canceled` for post.cancelled, otherwise the final publish outcome.'
+        ),
+    ]
+    scheduledFor: Annotated[
+        datetime | None,
+        Field(
+            description='Scheduled publish time, or null for a post that was published immediately. For post.cancelled, the time the post was scheduled for.'
+        ),
+    ]
+    targets: list[WebhookPostEventTarget]
+    reason: Annotated[
+        Literal['deleted', 'unscheduled'] | None,
+        Field(
+            description='post.cancelled only. `deleted` when the post was deleted, `unscheduled` when it was moved back to a draft.'
+        ),
+    ] = None
+
+
+class WebhookPostEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    post: WebhookPostEventPost
+
+
+class WebhookPostTargetEventPost(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='PostZen post id.')]
+    profileId: Annotated[str, Field(description="The post's primary profile.")]
+
+
+class WebhookPostTargetEventTarget(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='PostZen target id.')]
+    accountId: Annotated[str, Field(description='PostZen account id.')]
+    profileId: Annotated[str, Field(description="The target account's profile.")]
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ],
+        Field(
+            description='Platform of the account an event refers to. Webhook payloads use `x` for X (Twitter).'
+        ),
+    ]
+    status: Annotated[
+        Literal[
+            'draft',
+            'scheduled',
+            'queued',
+            'publishing',
+            'published',
+            'partially_failed',
+            'failed',
+            'canceled',
+        ],
+        Field(description='Status of one platform target when the event was created.'),
+    ]
+    platformPostId: Annotated[
+        str | None, Field(description="The platform's own id for the published post.")
+    ] = None
+    platformPostUrl: Annotated[
+        str | None, Field(description='Public URL of the published post.')
+    ] = None
+    publishedAt: Annotated[
+        datetime | None, Field(description='When the target was published.')
+    ] = None
+    errorCode: Annotated[
+        str | None, Field(description='Present when the target failed.')
+    ] = None
+    errorMessage: Annotated[
+        str | None, Field(description='Human-readable failure detail, when available.')
+    ] = None
+    attemptCount: Annotated[
+        int, Field(description='Publish attempts made for this target so far.', ge=0)
+    ]
+
+
+class WebhookPostTargetEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    post: WebhookPostTargetEventPost
+    target: WebhookPostTargetEventTarget
+
+
+class WebhookExternalPostEventExternalPost(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='PostZen external post id.')]
+    accountId: Annotated[str, Field(description='PostZen account id.')]
+    profileId: Annotated[str, Field(description="The account's profile.")]
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ],
+        Field(
+            description='Platform of the account an event refers to. Webhook payloads use `x` for X (Twitter).'
+        ),
+    ]
+    platformPostId: Annotated[
+        str, Field(description="The platform's own id for the post.")
+    ]
+    platformPostUrl: Annotated[
+        str | None, Field(description='Public URL of the post.')
+    ] = None
+    content: Annotated[
+        str | None, Field(description='Post text, when the platform returned it.')
+    ] = None
+    publishedAt: Annotated[
+        datetime, Field(description='When the post was published on the platform.')
+    ]
+    mediaType: Annotated[
+        str | None, Field(description='Media type as the platform reported it.')
+    ] = None
+
+
+class WebhookExternalPostEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    externalPost: WebhookExternalPostEventExternalPost
+
+
+class WebhookAccountEventAccount(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='PostZen account id.')]
+    profileId: Annotated[str, Field(description="The account's profile.")]
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ],
+        Field(
+            description='Platform of the account an event refers to. Webhook payloads use `x` for X (Twitter).'
+        ),
+    ]
+    username: Annotated[str, Field(description='Account username on the platform.')]
+    status: Literal['connected', 'needs_reauth', 'disconnected']
+    reason: Annotated[
+        Literal['reconnected', 'user_disconnected', 'profile_deleted'] | None,
+        Field(
+            description='`reconnected` on account.connected for an account that existed before. `user_disconnected` on account.disconnected when the user disconnected the account in the dashboard or deleted it through the API, `profile_deleted` when its profile was deleted. Omitted otherwise, including when the platform revoked access.'
+        ),
+    ] = None
+
+
+class WebhookAccountEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    account: WebhookAccountEventAccount
+
+
+class WebhookAnalyticsSyncedEventAccount(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='PostZen account id.')]
+    profileId: Annotated[str, Field(description="The account's profile.")]
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ],
+        Field(
+            description='Platform of the account an event refers to. Webhook payloads use `x` for X (Twitter).'
+        ),
+    ]
+    username: Annotated[str, Field(description='Account username on the platform.')]
+
+
+class WebhookAnalyticsSyncedEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    account: WebhookAnalyticsSyncedEventAccount
+    kind: Literal['metrics']
+    syncedAt: Annotated[datetime, Field(description='When the sync completed.')]
+    postsSynced: Annotated[
+        int, Field(description='Number of posts whose metrics were refreshed.', ge=0)
+    ]
+
+
+class WebhookMessageEventAttachment(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: str | None = None
+    type: Literal['image', 'video', 'audio', 'file']
+    url: Annotated[
+        str,
+        Field(
+            description='Platform-hosted URL. Meta expires these, so treat them as short-lived.'
+        ),
+    ]
+    previewUrl: str | None = None
+
+
+class WebhookMessageEventMessage(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='Platform message id.')]
+    conversationId: Annotated[
+        str | None,
+        Field(
+            description="Platform conversation id, the `conversationId` the inbox endpoints accept. Omitted only for a comment automation's private reply when PostZen has not synced that conversation yet."
+        ),
+    ] = None
+    accountId: Annotated[str, Field(description='PostZen account id.')]
+    profileId: Annotated[str, Field(description="The account's profile.")]
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ],
+        Field(
+            description='Platform of the account an event refers to. Webhook payloads use `x` for X (Twitter).'
+        ),
+    ]
+    direction: Annotated[
+        Literal['incoming', 'outgoing'],
+        Field(
+            description='`incoming` for message.received, `outgoing` for message.sent.'
+        ),
+    ]
+    text: Annotated[str | None, Field(description='Message text, when present.')] = None
+    attachments: Annotated[
+        list[WebhookMessageEventAttachment] | None,
+        Field(description='Omitted when the message has no attachments.'),
+    ] = None
+    senderId: Annotated[str | None, Field(description='Platform id of the sender.')] = (
+        None
+    )
+    senderName: Annotated[
+        str | None, Field(description='Display name of the sender.')
+    ] = None
+    createdAt: Annotated[datetime, Field(description='When the message was sent.')]
+    storyReply: Annotated[
+        bool | None, Field(description='True when the message replies to a story.')
+    ] = None
+    isStoryMention: Annotated[
+        bool | None, Field(description='True when the message is a story mention.')
+    ] = None
+    source: Annotated[
+        Literal['dashboard', 'api', 'automation', 'sync'],
+        Field(
+            description='`sync` for messages received from the platform; `dashboard`, `api`, or `automation` for messages sent through PostZen.'
+        ),
+    ]
+    automationId: Annotated[
+        str | None,
+        Field(
+            description='Comment automation that sent the message. Present only when `source` is `automation`.'
+        ),
+    ] = None
+    recipientId: Annotated[
+        str | None,
+        Field(
+            description='Platform id of the commenter the automation messaged. Present only when `source` is `automation`.'
+        ),
+    ] = None
+
+
+class WebhookMessageEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    message: WebhookMessageEventMessage
+
+
+class WebhookConversationEventConversation(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Platform conversation id, the `conversationId` the inbox endpoints accept.'
+        ),
+    ]
+    accountId: Annotated[str, Field(description='PostZen account id.')]
+    profileId: Annotated[str, Field(description="The account's profile.")]
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ],
+        Field(
+            description='Platform of the account an event refers to. Webhook payloads use `x` for X (Twitter).'
+        ),
+    ]
+    participant: WebhookEventPerson
+    lastMessage: Annotated[
+        str | None, Field(description='Text of the latest message, when known.')
+    ] = None
+    lastMessageAt: Annotated[
+        datetime | None, Field(description='When the latest message was sent.')
+    ] = None
+    url: Annotated[
+        str | None, Field(description='Link to the conversation on the platform.')
+    ] = None
+
+
+class WebhookConversationEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    conversation: WebhookConversationEventConversation
+
+
+class WebhookCommentEventComment(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='Platform comment id.')]
+    accountId: Annotated[str, Field(description='PostZen account id.')]
+    profileId: Annotated[str, Field(description="The account's profile.")]
+    platform: Annotated[
+        Literal[
+            'x',
+            'instagram',
+            'tiktok',
+            'linkedin',
+            'facebook',
+            'youtube',
+            'threads',
+            'pinterest',
+            'bluesky',
+            'telegram',
+        ],
+        Field(
+            description='Platform of the account an event refers to. Webhook payloads use `x` for X (Twitter).'
+        ),
+    ]
+    platformPostId: Annotated[
+        str, Field(description="The platform's id for the post the comment is on.")
+    ]
+    parentCommentId: Annotated[
+        str | None,
+        Field(description='Present when the comment is a reply to another comment.'),
+    ] = None
+    text: Annotated[str, Field(description='Comment text.')]
+    author: WebhookEventPerson
+    publishedAt: Annotated[datetime, Field(description='When the comment was posted.')]
+    permalink: Annotated[
+        str | None, Field(description='Link to the comment on the platform.')
+    ] = None
+
+
+class WebhookCommentEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    comment: WebhookCommentEventComment
+
+
+class WebhookContactEventContact(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[str, Field(description='PostZen contact id.')]
+    profileId: Annotated[str, Field(description="The contact's profile.")]
+    name: Annotated[str, Field(description='Contact name.')]
+
+
+class WebhookContactTagEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    contact: WebhookContactEventContact
+    tag: Annotated[str, Field(description='The tag that was added or removed.')]
+
+
+class WebhookContactFieldEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    contact: WebhookContactEventContact
+    field: Annotated[str, Field(description='Custom field key.')]
+    previousValue: Annotated[
+        str | float | bool | None,
+        Field(
+            description='Value before the change, or null when the field did not exist.'
+        ),
+    ]
+    value: Annotated[
+        str | float | bool | None,
+        Field(
+            description='Value after the change, or null when the field was cleared or removed.'
+        ),
+    ]
+
+
+class WebhookTestEventData(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    webhookEndpointId: Annotated[
+        str, Field(description='The webhook endpoint being tested.')
+    ]
+    message: Literal['Test event from PostZen']
+
+
+class WebhookPostEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal[
+        'post.scheduled',
+        'post.published',
+        'post.partially_failed',
+        'post.failed',
+        'post.cancelled',
+    ]
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookPostEventData
+
+
+class WebhookPostTargetEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['post.platform.published', 'post.platform.failed']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookPostTargetEventData
+
+
+class WebhookExternalPostEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['post.external.created']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookExternalPostEventData
+
+
+class WebhookAccountEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['account.connected', 'account.needs_reauth', 'account.disconnected']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookAccountEventData
+
+
+class WebhookAnalyticsSyncedEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['analytics.synced']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookAnalyticsSyncedEventData
+
+
+class WebhookConversationEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['conversation.started']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookConversationEventData
+
+
+class WebhookMessageEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['message.received', 'message.sent']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookMessageEventData
+
+
+class WebhookCommentEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['comment.received']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookCommentEventData
+
+
+class WebhookContactTagEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['contact.tag_added', 'contact.tag_removed']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookContactTagEventData
+
+
+class WebhookContactFieldEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['contact.field_changed']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookContactFieldEventData
+
+
+class WebhookTestEvent(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    id: Annotated[
+        str,
+        Field(
+            description='Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it.'
+        ),
+    ]
+    type: Literal['webhook.test']
+    apiVersion: Annotated[
+        str, Field(description='Payload version.', examples=['2026-08-06'])
+    ]
+    createdAt: Annotated[datetime, Field(description='When the event was created.')]
+    data: WebhookTestEventData
+
+
 class WebhookCustomHeader(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -2207,11 +2979,25 @@ class Webhook(BaseModel):
     events: Annotated[
         list[
             Literal[
+                'post.scheduled',
                 'post.published',
                 'post.partially_failed',
                 'post.failed',
+                'post.cancelled',
+                'post.platform.published',
+                'post.platform.failed',
+                'post.external.created',
+                'account.connected',
                 'account.needs_reauth',
                 'account.disconnected',
+                'analytics.synced',
+                'conversation.started',
+                'message.received',
+                'message.sent',
+                'comment.received',
+                'contact.tag_added',
+                'contact.tag_removed',
+                'contact.field_changed',
                 'webhook.test',
             ]
         ],
@@ -2255,11 +3041,25 @@ class WebhookCreateRequest(BaseModel):
     events: Annotated[
         list[
             Literal[
+                'post.scheduled',
                 'post.published',
                 'post.partially_failed',
                 'post.failed',
+                'post.cancelled',
+                'post.platform.published',
+                'post.platform.failed',
+                'post.external.created',
+                'account.connected',
                 'account.needs_reauth',
                 'account.disconnected',
+                'analytics.synced',
+                'conversation.started',
+                'message.received',
+                'message.sent',
+                'comment.received',
+                'contact.tag_added',
+                'contact.tag_removed',
+                'contact.field_changed',
                 'webhook.test',
             ]
         ],
@@ -2301,11 +3101,25 @@ class WebhookUpdateRequest(BaseModel):
     events: Annotated[
         list[
             Literal[
+                'post.scheduled',
                 'post.published',
                 'post.partially_failed',
                 'post.failed',
+                'post.cancelled',
+                'post.platform.published',
+                'post.platform.failed',
+                'post.external.created',
+                'account.connected',
                 'account.needs_reauth',
                 'account.disconnected',
+                'analytics.synced',
+                'conversation.started',
+                'message.received',
+                'message.sent',
+                'comment.received',
+                'contact.tag_added',
+                'contact.tag_removed',
+                'contact.field_changed',
                 'webhook.test',
             ]
         ]
@@ -2349,15 +3163,29 @@ class WebhookDelivery(BaseModel):
     )
     event: Annotated[
         Literal[
+            'post.scheduled',
             'post.published',
             'post.partially_failed',
             'post.failed',
+            'post.cancelled',
+            'post.platform.published',
+            'post.platform.failed',
+            'post.external.created',
+            'account.connected',
             'account.needs_reauth',
             'account.disconnected',
+            'analytics.synced',
+            'conversation.started',
+            'message.received',
+            'message.sent',
+            'comment.received',
+            'contact.tag_added',
+            'contact.tag_removed',
+            'contact.field_changed',
             'webhook.test',
         ],
         Field(
-            description='Webhook event type. Receivers should tolerate additional event types in future API versions.'
+            description="Webhook event type. See the Webhook Events section for each event's trigger and payload. Receivers should tolerate additional event types in future API versions."
         ),
     ]
     eventId: Annotated[

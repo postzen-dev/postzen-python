@@ -65,6 +65,10 @@
 		{
 			"name": "Webhooks",
 			"description": "Manage outbound webhook endpoints and retained delivery logs. PostZen sends an at-least-once JSON envelope `{ id, type, apiVersion, createdAt, data }` using `POST`; automatic retries and manual redeliveries keep the same event id and raw body. Requests include `X-PostZen-Event`, `X-PostZen-Event-Id`, `X-PostZen-Delivery-Id`, and `X-PostZen-Timestamp`. When a signing secret is configured, `X-PostZen-Signature` is `v1=<hex digest>` where the digest is HMAC-SHA256 over `<timestamp>.<raw request body>`. Production receivers should configure signing, compare signatures in constant time, reject timestamps older than five minutes, and deduplicate by event id."
+		},
+		{
+			"name": "Webhook Events",
+			"description": "Payloads PostZen sends to your webhook endpoints, grouped by event family. Every delivery is the JSON envelope `{ id, type, apiVersion, createdAt, data }`; `type` names the event and `data` has the shape documented for its family. Events that describe related changes (a target event and its post event, for example) are delivered independently, so do not rely on their order."
 		}
 	],
 	"paths": {
@@ -7048,6 +7052,283 @@
 			}
 		}
 	},
+	"webhooks": {
+		"postEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "postEvents",
+				"summary": "Post events",
+				"description": "- `post.scheduled`: A post became scheduled or its scheduled time changed, including moves by a queue reshuffle; content-only edits, drafts, and posts published immediately do not emit it.\n- `post.published`: Every target of a post published successfully.\n- `post.partially_failed`: A post finished publishing with at least one target published and the rest failed or canceled.\n- `post.failed`: A post finished publishing and none of its targets published.\n- `post.cancelled`: A scheduled or queued post was deleted (`reason: deleted`) or moved back to a draft (`reason: unscheduled`) before it published.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookPostEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"postTargetEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "postTargetEvents",
+				"summary": "Post target events",
+				"description": "- `post.platform.published`: One platform target of a post published; sent once per target.\n- `post.platform.failed`: One platform target of a post failed with no further automatic retries; a retry that fails again emits it again.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookPostTargetEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"externalPostEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "externalPostEvents",
+				"summary": "External post events",
+				"description": "- `post.external.created`: External post sync found a post published directly on the platform; posts published before the account was connected and posts found by the account's first discovery run (history import) do not emit it.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookExternalPostEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"accountEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "accountEvents",
+				"summary": "Account events",
+				"description": "- `account.connected`: An account was connected for the first time, or a disconnected or needs-reauth account was reconnected (`reason: reconnected`); re-authorizing an account that is already connected emits nothing.\n- `account.needs_reauth`: An account's credentials stopped working and the account must be reconnected.\n- `account.disconnected`: An account was disconnected because the platform revoked access, the user disconnected it in the dashboard or deleted it through the API (`reason: user_disconnected`), or its profile was deleted (`reason: profile_deleted`).\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookAccountEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"analyticsEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "analyticsEvents",
+				"summary": "Analytics events",
+				"description": "- `analytics.synced`: An account's metrics sync completed; `postsSynced` counts the posts whose metrics were refreshed.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookAnalyticsSyncedEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"conversationEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "conversationEvents",
+				"summary": "Conversation events",
+				"description": "- `conversation.started`: A new direct-message conversation appeared on a connected account; conversations imported by the account's first inbox sync do not emit it.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookConversationEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"messageEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "messageEvents",
+				"summary": "Message events",
+				"description": "- `message.received`: A new direct message arrived from another user; only new messages emit it, not history imported when a conversation is first synced.\n- `message.sent`: A message was sent through PostZen (dashboard, API, or a comment automation, including its Opening DM, follow-request, and nudge messages as well as the final DM); messages sent from the platform's own app do not emit it.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookMessageEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"commentEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "commentEvents",
+				"summary": "Comment events",
+				"description": "- `comment.received`: A new comment from someone other than the account arrived on one of the account's posts; comments imported when a post is first synced do not emit it.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookCommentEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"contactTagEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "contactTagEvents",
+				"summary": "Contact tag events",
+				"description": "- `contact.tag_added`: A tag was added to a contact, including each tag on a newly created contact; bulk contact imports emit no contact events.\n- `contact.tag_removed`: A tag was removed from a contact.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookContactTagEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"contactFieldEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "contactFieldEvents",
+				"summary": "Contact field events",
+				"description": "- `contact.field_changed`: A custom field on a contact was set, changed, or cleared; bulk contact imports emit no contact events.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookContactFieldEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		},
+		"testEvents": {
+			"post": {
+				"tags": [
+					"Webhook Events"
+				],
+				"operationId": "testEvents",
+				"summary": "Test event",
+				"description": "- `webhook.test`: Sent by `POST /v1/webhooks/{webhookId}/test` to check that the endpoint receives and verifies deliveries.\n\nDelivered as a `POST` to every active endpoint that subscribes to the event and whose profile access covers it. Delivery is at least once and events are not ordered, so deduplicate by `id`.",
+				"requestBody": {
+					"required": true,
+					"content": {
+						"application/json": {
+							"schema": {
+								"$ref": "#/components/schemas/WebhookTestEvent"
+							}
+						}
+					}
+				},
+				"responses": {
+					"2XX": {
+						"description": "Acknowledges the delivery. Any other status, or no response within 10 seconds, schedules a retry."
+					}
+				}
+			}
+		}
+	},
 	"components": {
 		"securitySchemes": {
 			"bearerAuth": {
@@ -11726,14 +12007,1187 @@
 			"WebhookEvent": {
 				"type": "string",
 				"enum": [
+					"post.scheduled",
 					"post.published",
 					"post.partially_failed",
 					"post.failed",
+					"post.cancelled",
+					"post.platform.published",
+					"post.platform.failed",
+					"post.external.created",
+					"account.connected",
 					"account.needs_reauth",
 					"account.disconnected",
+					"analytics.synced",
+					"conversation.started",
+					"message.received",
+					"message.sent",
+					"comment.received",
+					"contact.tag_added",
+					"contact.tag_removed",
+					"contact.field_changed",
 					"webhook.test"
 				],
-				"description": "Webhook event type. Receivers should tolerate additional event types in future API versions."
+				"description": "Webhook event type. See the Webhook Events section for each event's trigger and payload. Receivers should tolerate additional event types in future API versions."
+			},
+			"WebhookPlatform": {
+				"type": "string",
+				"enum": [
+					"x",
+					"instagram",
+					"tiktok",
+					"linkedin",
+					"facebook",
+					"youtube",
+					"threads",
+					"pinterest",
+					"bluesky",
+					"telegram"
+				],
+				"description": "Platform of the account an event refers to. Webhook payloads use `x` for X (Twitter)."
+			},
+			"WebhookPostTargetStatus": {
+				"type": "string",
+				"enum": [
+					"draft",
+					"scheduled",
+					"queued",
+					"publishing",
+					"published",
+					"partially_failed",
+					"failed",
+					"canceled"
+				],
+				"description": "Status of one platform target when the event was created."
+			},
+			"WebhookEventPerson": {
+				"type": "object",
+				"description": "A platform user as the platform reported them. Every field is omitted when unknown.",
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Platform user id."
+					},
+					"name": {
+						"type": "string",
+						"description": "Display name."
+					},
+					"username": {
+						"type": "string",
+						"description": "Handle without the leading @."
+					}
+				}
+			},
+			"WebhookPostEventTarget": {
+				"type": "object",
+				"required": [
+					"accountId",
+					"profileId",
+					"platform",
+					"status"
+				],
+				"properties": {
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The target account's profile. A post's targets can span profiles."
+					},
+					"platform": {
+						"$ref": "#/components/schemas/WebhookPlatform"
+					},
+					"status": {
+						"$ref": "#/components/schemas/WebhookPostTargetStatus"
+					},
+					"platformPostUrl": {
+						"type": "string",
+						"format": "uri",
+						"description": "Public URL of the published post, when the platform returned one."
+					},
+					"errorCode": {
+						"type": "string",
+						"description": "Present when the target failed."
+					}
+				}
+			},
+			"WebhookPostEventPost": {
+				"type": "object",
+				"required": [
+					"id",
+					"profileId",
+					"status",
+					"scheduledFor",
+					"targets"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "PostZen post id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The post's primary profile."
+					},
+					"status": {
+						"type": "string",
+						"enum": [
+							"scheduled",
+							"published",
+							"partially_failed",
+							"failed",
+							"canceled"
+						],
+						"description": "`scheduled` for post.scheduled, `canceled` for post.cancelled, otherwise the final publish outcome."
+					},
+					"scheduledFor": {
+						"type": [
+							"string",
+							"null"
+						],
+						"format": "date-time",
+						"description": "Scheduled publish time, or null for a post that was published immediately. For post.cancelled, the time the post was scheduled for."
+					},
+					"targets": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/WebhookPostEventTarget"
+						}
+					},
+					"reason": {
+						"type": "string",
+						"enum": [
+							"deleted",
+							"unscheduled"
+						],
+						"description": "post.cancelled only. `deleted` when the post was deleted, `unscheduled` when it was moved back to a draft."
+					}
+				}
+			},
+			"WebhookPostEventData": {
+				"type": "object",
+				"required": [
+					"post"
+				],
+				"properties": {
+					"post": {
+						"$ref": "#/components/schemas/WebhookPostEventPost"
+					}
+				}
+			},
+			"WebhookPostTargetEventPost": {
+				"type": "object",
+				"required": [
+					"id",
+					"profileId"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "PostZen post id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The post's primary profile."
+					}
+				}
+			},
+			"WebhookPostTargetEventTarget": {
+				"type": "object",
+				"required": [
+					"id",
+					"accountId",
+					"profileId",
+					"platform",
+					"status",
+					"attemptCount"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "PostZen target id."
+					},
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The target account's profile."
+					},
+					"platform": {
+						"$ref": "#/components/schemas/WebhookPlatform"
+					},
+					"status": {
+						"$ref": "#/components/schemas/WebhookPostTargetStatus"
+					},
+					"platformPostId": {
+						"type": "string",
+						"description": "The platform's own id for the published post."
+					},
+					"platformPostUrl": {
+						"type": "string",
+						"format": "uri",
+						"description": "Public URL of the published post."
+					},
+					"publishedAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the target was published."
+					},
+					"errorCode": {
+						"type": "string",
+						"description": "Present when the target failed."
+					},
+					"errorMessage": {
+						"type": "string",
+						"description": "Human-readable failure detail, when available."
+					},
+					"attemptCount": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Publish attempts made for this target so far."
+					}
+				}
+			},
+			"WebhookPostTargetEventData": {
+				"type": "object",
+				"required": [
+					"post",
+					"target"
+				],
+				"properties": {
+					"post": {
+						"$ref": "#/components/schemas/WebhookPostTargetEventPost"
+					},
+					"target": {
+						"$ref": "#/components/schemas/WebhookPostTargetEventTarget"
+					}
+				}
+			},
+			"WebhookExternalPostEventExternalPost": {
+				"type": "object",
+				"required": [
+					"id",
+					"accountId",
+					"profileId",
+					"platform",
+					"platformPostId",
+					"publishedAt"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "PostZen external post id."
+					},
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The account's profile."
+					},
+					"platform": {
+						"$ref": "#/components/schemas/WebhookPlatform"
+					},
+					"platformPostId": {
+						"type": "string",
+						"description": "The platform's own id for the post."
+					},
+					"platformPostUrl": {
+						"type": "string",
+						"format": "uri",
+						"description": "Public URL of the post."
+					},
+					"content": {
+						"type": "string",
+						"description": "Post text, when the platform returned it."
+					},
+					"publishedAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the post was published on the platform."
+					},
+					"mediaType": {
+						"type": "string",
+						"description": "Media type as the platform reported it."
+					}
+				}
+			},
+			"WebhookExternalPostEventData": {
+				"type": "object",
+				"required": [
+					"externalPost"
+				],
+				"properties": {
+					"externalPost": {
+						"$ref": "#/components/schemas/WebhookExternalPostEventExternalPost"
+					}
+				}
+			},
+			"WebhookAccountEventAccount": {
+				"type": "object",
+				"required": [
+					"id",
+					"profileId",
+					"platform",
+					"username",
+					"status"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "PostZen account id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The account's profile."
+					},
+					"platform": {
+						"$ref": "#/components/schemas/WebhookPlatform"
+					},
+					"username": {
+						"type": "string",
+						"description": "Account username on the platform."
+					},
+					"status": {
+						"type": "string",
+						"enum": [
+							"connected",
+							"needs_reauth",
+							"disconnected"
+						]
+					},
+					"reason": {
+						"type": "string",
+						"enum": [
+							"reconnected",
+							"user_disconnected",
+							"profile_deleted"
+						],
+						"description": "`reconnected` on account.connected for an account that existed before. `user_disconnected` on account.disconnected when the user disconnected the account in the dashboard or deleted it through the API, `profile_deleted` when its profile was deleted. Omitted otherwise, including when the platform revoked access."
+					}
+				}
+			},
+			"WebhookAccountEventData": {
+				"type": "object",
+				"required": [
+					"account"
+				],
+				"properties": {
+					"account": {
+						"$ref": "#/components/schemas/WebhookAccountEventAccount"
+					}
+				}
+			},
+			"WebhookAnalyticsSyncedEventAccount": {
+				"type": "object",
+				"required": [
+					"id",
+					"profileId",
+					"platform",
+					"username"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "PostZen account id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The account's profile."
+					},
+					"platform": {
+						"$ref": "#/components/schemas/WebhookPlatform"
+					},
+					"username": {
+						"type": "string",
+						"description": "Account username on the platform."
+					}
+				}
+			},
+			"WebhookAnalyticsSyncedEventData": {
+				"type": "object",
+				"required": [
+					"account",
+					"kind",
+					"syncedAt",
+					"postsSynced"
+				],
+				"properties": {
+					"account": {
+						"$ref": "#/components/schemas/WebhookAnalyticsSyncedEventAccount"
+					},
+					"kind": {
+						"type": "string",
+						"enum": [
+							"metrics"
+						]
+					},
+					"syncedAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the sync completed."
+					},
+					"postsSynced": {
+						"type": "integer",
+						"minimum": 0,
+						"description": "Number of posts whose metrics were refreshed."
+					}
+				}
+			},
+			"WebhookMessageEventAttachment": {
+				"type": "object",
+				"required": [
+					"type",
+					"url"
+				],
+				"properties": {
+					"id": {
+						"type": "string"
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"image",
+							"video",
+							"audio",
+							"file"
+						]
+					},
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "Platform-hosted URL. Meta expires these, so treat them as short-lived."
+					},
+					"previewUrl": {
+						"type": "string",
+						"format": "uri"
+					}
+				}
+			},
+			"WebhookMessageEventMessage": {
+				"type": "object",
+				"required": [
+					"id",
+					"accountId",
+					"profileId",
+					"platform",
+					"direction",
+					"createdAt",
+					"source"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Platform message id."
+					},
+					"conversationId": {
+						"type": "string",
+						"description": "Platform conversation id, the `conversationId` the inbox endpoints accept. Omitted only for a comment automation's private reply when PostZen has not synced that conversation yet."
+					},
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The account's profile."
+					},
+					"platform": {
+						"$ref": "#/components/schemas/WebhookPlatform"
+					},
+					"direction": {
+						"type": "string",
+						"enum": [
+							"incoming",
+							"outgoing"
+						],
+						"description": "`incoming` for message.received, `outgoing` for message.sent."
+					},
+					"text": {
+						"type": "string",
+						"description": "Message text, when present."
+					},
+					"attachments": {
+						"type": "array",
+						"items": {
+							"$ref": "#/components/schemas/WebhookMessageEventAttachment"
+						},
+						"description": "Omitted when the message has no attachments."
+					},
+					"senderId": {
+						"type": "string",
+						"description": "Platform id of the sender."
+					},
+					"senderName": {
+						"type": "string",
+						"description": "Display name of the sender."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the message was sent."
+					},
+					"storyReply": {
+						"type": "boolean",
+						"description": "True when the message replies to a story."
+					},
+					"isStoryMention": {
+						"type": "boolean",
+						"description": "True when the message is a story mention."
+					},
+					"source": {
+						"type": "string",
+						"enum": [
+							"dashboard",
+							"api",
+							"automation",
+							"sync"
+						],
+						"description": "`sync` for messages received from the platform; `dashboard`, `api`, or `automation` for messages sent through PostZen."
+					},
+					"automationId": {
+						"type": "string",
+						"description": "Comment automation that sent the message. Present only when `source` is `automation`."
+					},
+					"recipientId": {
+						"type": "string",
+						"description": "Platform id of the commenter the automation messaged. Present only when `source` is `automation`."
+					}
+				}
+			},
+			"WebhookMessageEventData": {
+				"type": "object",
+				"required": [
+					"message"
+				],
+				"properties": {
+					"message": {
+						"$ref": "#/components/schemas/WebhookMessageEventMessage"
+					}
+				}
+			},
+			"WebhookConversationEventConversation": {
+				"type": "object",
+				"required": [
+					"id",
+					"accountId",
+					"profileId",
+					"platform",
+					"participant"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Platform conversation id, the `conversationId` the inbox endpoints accept."
+					},
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The account's profile."
+					},
+					"platform": {
+						"$ref": "#/components/schemas/WebhookPlatform"
+					},
+					"participant": {
+						"$ref": "#/components/schemas/WebhookEventPerson"
+					},
+					"lastMessage": {
+						"type": "string",
+						"description": "Text of the latest message, when known."
+					},
+					"lastMessageAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the latest message was sent."
+					},
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "Link to the conversation on the platform."
+					}
+				}
+			},
+			"WebhookConversationEventData": {
+				"type": "object",
+				"required": [
+					"conversation"
+				],
+				"properties": {
+					"conversation": {
+						"$ref": "#/components/schemas/WebhookConversationEventConversation"
+					}
+				}
+			},
+			"WebhookCommentEventComment": {
+				"type": "object",
+				"required": [
+					"id",
+					"accountId",
+					"profileId",
+					"platform",
+					"platformPostId",
+					"text",
+					"author",
+					"publishedAt"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Platform comment id."
+					},
+					"accountId": {
+						"type": "string",
+						"description": "PostZen account id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The account's profile."
+					},
+					"platform": {
+						"$ref": "#/components/schemas/WebhookPlatform"
+					},
+					"platformPostId": {
+						"type": "string",
+						"description": "The platform's id for the post the comment is on."
+					},
+					"parentCommentId": {
+						"type": "string",
+						"description": "Present when the comment is a reply to another comment."
+					},
+					"text": {
+						"type": "string",
+						"description": "Comment text."
+					},
+					"author": {
+						"$ref": "#/components/schemas/WebhookEventPerson"
+					},
+					"publishedAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the comment was posted."
+					},
+					"permalink": {
+						"type": "string",
+						"format": "uri",
+						"description": "Link to the comment on the platform."
+					}
+				}
+			},
+			"WebhookCommentEventData": {
+				"type": "object",
+				"required": [
+					"comment"
+				],
+				"properties": {
+					"comment": {
+						"$ref": "#/components/schemas/WebhookCommentEventComment"
+					}
+				}
+			},
+			"WebhookContactEventContact": {
+				"type": "object",
+				"required": [
+					"id",
+					"profileId",
+					"name"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "PostZen contact id."
+					},
+					"profileId": {
+						"type": "string",
+						"description": "The contact's profile."
+					},
+					"name": {
+						"type": "string",
+						"description": "Contact name."
+					}
+				}
+			},
+			"WebhookContactTagEventData": {
+				"type": "object",
+				"required": [
+					"contact",
+					"tag"
+				],
+				"properties": {
+					"contact": {
+						"$ref": "#/components/schemas/WebhookContactEventContact"
+					},
+					"tag": {
+						"type": "string",
+						"description": "The tag that was added or removed."
+					}
+				}
+			},
+			"WebhookContactFieldEventData": {
+				"type": "object",
+				"required": [
+					"contact",
+					"field",
+					"previousValue",
+					"value"
+				],
+				"properties": {
+					"contact": {
+						"$ref": "#/components/schemas/WebhookContactEventContact"
+					},
+					"field": {
+						"type": "string",
+						"description": "Custom field key."
+					},
+					"previousValue": {
+						"type": [
+							"string",
+							"number",
+							"boolean",
+							"null"
+						],
+						"description": "Value before the change, or null when the field did not exist."
+					},
+					"value": {
+						"type": [
+							"string",
+							"number",
+							"boolean",
+							"null"
+						],
+						"description": "Value after the change, or null when the field was cleared or removed."
+					}
+				}
+			},
+			"WebhookTestEventData": {
+				"type": "object",
+				"required": [
+					"webhookEndpointId",
+					"message"
+				],
+				"properties": {
+					"webhookEndpointId": {
+						"type": "string",
+						"description": "The webhook endpoint being tested."
+					},
+					"message": {
+						"type": "string",
+						"enum": [
+							"Test event from PostZen"
+						]
+					}
+				}
+			},
+			"WebhookPostEvent": {
+				"type": "object",
+				"description": "Envelope for `post.scheduled`, `post.published`, `post.partially_failed`, `post.failed`, `post.cancelled`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"post.scheduled",
+							"post.published",
+							"post.partially_failed",
+							"post.failed",
+							"post.cancelled"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookPostEventData"
+					}
+				}
+			},
+			"WebhookPostTargetEvent": {
+				"type": "object",
+				"description": "Envelope for `post.platform.published`, `post.platform.failed`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"post.platform.published",
+							"post.platform.failed"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookPostTargetEventData"
+					}
+				}
+			},
+			"WebhookExternalPostEvent": {
+				"type": "object",
+				"description": "Envelope for `post.external.created`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"post.external.created"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookExternalPostEventData"
+					}
+				}
+			},
+			"WebhookAccountEvent": {
+				"type": "object",
+				"description": "Envelope for `account.connected`, `account.needs_reauth`, `account.disconnected`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"account.connected",
+							"account.needs_reauth",
+							"account.disconnected"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookAccountEventData"
+					}
+				}
+			},
+			"WebhookAnalyticsSyncedEvent": {
+				"type": "object",
+				"description": "Envelope for `analytics.synced`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"analytics.synced"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookAnalyticsSyncedEventData"
+					}
+				}
+			},
+			"WebhookConversationEvent": {
+				"type": "object",
+				"description": "Envelope for `conversation.started`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"conversation.started"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookConversationEventData"
+					}
+				}
+			},
+			"WebhookMessageEvent": {
+				"type": "object",
+				"description": "Envelope for `message.received`, `message.sent`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"message.received",
+							"message.sent"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookMessageEventData"
+					}
+				}
+			},
+			"WebhookCommentEvent": {
+				"type": "object",
+				"description": "Envelope for `comment.received`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"comment.received"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookCommentEventData"
+					}
+				}
+			},
+			"WebhookContactTagEvent": {
+				"type": "object",
+				"description": "Envelope for `contact.tag_added`, `contact.tag_removed`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"contact.tag_added",
+							"contact.tag_removed"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookContactTagEventData"
+					}
+				}
+			},
+			"WebhookContactFieldEvent": {
+				"type": "object",
+				"description": "Envelope for `contact.field_changed`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"contact.field_changed"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookContactFieldEventData"
+					}
+				}
+			},
+			"WebhookTestEvent": {
+				"type": "object",
+				"description": "Envelope for `webhook.test`.",
+				"required": [
+					"id",
+					"type",
+					"apiVersion",
+					"createdAt",
+					"data"
+				],
+				"properties": {
+					"id": {
+						"type": "string",
+						"description": "Event id (`evt_…`). Stable across automatic retries and manual redeliveries; deduplicate on it."
+					},
+					"type": {
+						"type": "string",
+						"enum": [
+							"webhook.test"
+						]
+					},
+					"apiVersion": {
+						"type": "string",
+						"example": "2026-08-06",
+						"description": "Payload version."
+					},
+					"createdAt": {
+						"type": "string",
+						"format": "date-time",
+						"description": "When the event was created."
+					},
+					"data": {
+						"$ref": "#/components/schemas/WebhookTestEventData"
+					}
+				}
 			},
 			"WebhookDeliveryStatus": {
 				"type": "string",
