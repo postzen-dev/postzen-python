@@ -11290,6 +11290,23 @@
 					"shareToFeed": {
 						"type": "boolean",
 						"description": "Reels only. Defaults to `true`. Set to `false` to keep the reel off the profile feed."
+					},
+					"trialParams": {
+						"type": "object",
+						"description": "Reels only. Publishes the reel as a trial reel, which Instagram shows to non-followers first. Sending it with any other `postType` returns a validation error. Trial reels are available only on public professional accounts that Instagram has made eligible; an ineligible account fails at publish time.",
+						"required": [
+							"graduationStrategy"
+						],
+						"properties": {
+							"graduationStrategy": {
+								"type": "string",
+								"enum": [
+									"MANUAL",
+									"SS_PERFORMANCE"
+								],
+								"description": "How the trial reel graduates to followers. `MANUAL`: the creator graduates it in the Instagram app. `SS_PERFORMANCE`: Instagram graduates it automatically when it performs well with non-followers. Case-sensitive."
+							}
+						}
 					}
 				}
 			},

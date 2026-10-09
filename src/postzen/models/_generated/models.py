@@ -1760,6 +1760,19 @@ class UserTag(BaseModel):
     y: float
 
 
+class TrialParams(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    graduationStrategy: Annotated[
+        Literal['MANUAL', 'SS_PERFORMANCE'],
+        Field(
+            description='How the trial reel graduates to followers. `MANUAL`: the creator graduates it in the Instagram app. `SS_PERFORMANCE`: Instagram graduates it automatically when it performs well with non-followers. Case-sensitive.'
+        ),
+    ]
+
+
 class InstagramSettings(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -1793,6 +1806,12 @@ class InstagramSettings(BaseModel):
         bool | None,
         Field(
             description='Reels only. Defaults to `true`. Set to `false` to keep the reel off the profile feed.'
+        ),
+    ] = None
+    trialParams: Annotated[
+        TrialParams | None,
+        Field(
+            description='Reels only. Publishes the reel as a trial reel, which Instagram shows to non-followers first. Sending it with any other `postType` returns a validation error. Trial reels are available only on public professional accounts that Instagram has made eligible; an ineligible account fails at publish time.'
         ),
     ] = None
 
