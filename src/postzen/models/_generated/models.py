@@ -1480,6 +1480,56 @@ class InboxMessageAttachment(BaseModel):
     previewUrl: str | None = None
 
 
+class InboxMessageTemplateButton(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    type: Annotated[
+        Literal['url', 'postback'],
+        Field(
+            description='`url` opens `url` in a browser. `postback` is a reply button handled inside Instagram; its payload is never exposed.'
+        ),
+    ]
+    title: str
+    url: Annotated[str | None, Field(description='Present on `url` buttons only.')] = (
+        None
+    )
+
+
+class InboxMessageTemplateElement(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    title: Annotated[
+        str,
+        Field(
+            description='The card title, or the message text on a button-only template.'
+        ),
+    ]
+    subtitle: str | None = None
+    imageUrl: str | None = None
+    buttons: Annotated[list[InboxMessageTemplateButton] | None, Field(max_length=3)] = (
+        None
+    )
+
+
+class InboxMessageTemplate(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    elements: Annotated[
+        list[InboxMessageTemplateElement],
+        Field(
+            description='One element per card; more than one is a carousel.',
+            max_length=10,
+            min_length=1,
+        ),
+    ]
+
+
 class InboxMessage(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -1505,6 +1555,12 @@ class InboxMessage(BaseModel):
     ]
     createdAt: datetime
     attachments: list[InboxMessageAttachment] | None = None
+    template: Annotated[
+        InboxMessageTemplate | None,
+        Field(
+            description='Present on template messages (button templates, image cards) such as comment-automation DMs. A button-only template is one element whose title is the message text.'
+        ),
+    ] = None
     storyReply: Annotated[
         bool | None,
         Field(

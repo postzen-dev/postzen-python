@@ -10711,6 +10711,74 @@
 					}
 				}
 			},
+			"InboxMessageTemplateButton": {
+				"type": "object",
+				"required": [
+					"type",
+					"title"
+				],
+				"properties": {
+					"type": {
+						"type": "string",
+						"enum": [
+							"url",
+							"postback"
+						],
+						"description": "`url` opens `url` in a browser. `postback` is a reply button handled inside Instagram; its payload is never exposed."
+					},
+					"title": {
+						"type": "string"
+					},
+					"url": {
+						"type": "string",
+						"format": "uri",
+						"description": "Present on `url` buttons only."
+					}
+				}
+			},
+			"InboxMessageTemplateElement": {
+				"type": "object",
+				"required": [
+					"title"
+				],
+				"properties": {
+					"title": {
+						"type": "string",
+						"description": "The card title, or the message text on a button-only template."
+					},
+					"subtitle": {
+						"type": "string"
+					},
+					"imageUrl": {
+						"type": "string",
+						"format": "uri"
+					},
+					"buttons": {
+						"type": "array",
+						"maxItems": 3,
+						"items": {
+							"$ref": "#/components/schemas/InboxMessageTemplateButton"
+						}
+					}
+				}
+			},
+			"InboxMessageTemplate": {
+				"type": "object",
+				"required": [
+					"elements"
+				],
+				"properties": {
+					"elements": {
+						"type": "array",
+						"minItems": 1,
+						"maxItems": 10,
+						"description": "One element per card; more than one is a carousel.",
+						"items": {
+							"$ref": "#/components/schemas/InboxMessageTemplateElement"
+						}
+					}
+				}
+			},
 			"InboxMessage": {
 				"type": "object",
 				"required": [
@@ -10765,6 +10833,10 @@
 						"items": {
 							"$ref": "#/components/schemas/InboxMessageAttachment"
 						}
+					},
+					"template": {
+						"$ref": "#/components/schemas/InboxMessageTemplate",
+						"description": "Present on template messages (button templates, image cards) such as comment-automation DMs. A button-only template is one element whose title is the message text."
 					},
 					"storyReply": {
 						"type": "boolean",
