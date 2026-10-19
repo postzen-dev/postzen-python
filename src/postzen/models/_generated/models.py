@@ -7,7 +7,7 @@ from datetime import date as date_aliased
 from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, RootModel, constr
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints
 
 
 class Keyword(RootModel[str]):
@@ -2116,6 +2116,33 @@ class MediaItem(BaseModel):
     title: str | None = None
 
 
+class PlatformError1(BaseModel):
+    model_config = ConfigDict(
+        extra='ignore',
+        populate_by_name=True,
+    )
+    code: Annotated[
+        int | None,
+        Field(description="The platform's error code, for example Meta's `36003`."),
+    ] = None
+    subcode: Annotated[
+        int | None,
+        Field(
+            description="The platform's error subcode, for example Meta's `2207009`."
+        ),
+    ] = None
+    fbtraceId: Annotated[
+        str | None,
+        Field(
+            description="Meta's trace id for the failed call. Quote it to Meta support; Meta expires it after a short time."
+        ),
+    ] = None
+    type: Annotated[
+        str | None,
+        Field(description="The platform's error type, for example `OAuthException`."),
+    ] = None
+
+
 class ApiPostAccount(BaseModel):
     model_config = ConfigDict(
         extra='ignore',
@@ -2413,6 +2440,12 @@ class WebhookPostTargetEventTarget(BaseModel):
     ] = None
     errorMessage: Annotated[
         str | None, Field(description='Human-readable failure detail, when available.')
+    ] = None
+    platformError: Annotated[
+        PlatformError1 | None,
+        Field(
+            description="The platform's own error envelope for the failure (Meta's code, subcode, fbtrace_id, and type), present only when the platform returned one. Fields the platform did not send are absent."
+        ),
     ] = None
     attemptCount: Annotated[
         int, Field(description='Publish attempts made for this target so far.', ge=0)
@@ -3781,7 +3814,12 @@ class Contact(BaseModel):
     ]
     customFields: Annotated[
         dict[
-            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            Annotated[
+                str,
+                StringConstraints(
+                    pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64
+                ),
+            ],
             CustomFields | float | bool | None,
         ]
         | None,
@@ -3970,7 +4008,12 @@ class ContactChannel(BaseModel):
     ]
     metadata: Annotated[
         dict[
-            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            Annotated[
+                str,
+                StringConstraints(
+                    pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64
+                ),
+            ],
             Metadata | float | bool | None,
         ]
         | None,
@@ -4059,7 +4102,12 @@ class ContactCreateRequest(BaseModel):
     ] = None
     customFields: Annotated[
         dict[
-            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            Annotated[
+                str,
+                StringConstraints(
+                    pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64
+                ),
+            ],
             CustomFields | float | bool | None,
         ]
         | None,
@@ -4186,7 +4234,12 @@ class ContactUpdateRequest(BaseModel):
     ] = None
     customFields: Annotated[
         dict[
-            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            Annotated[
+                str,
+                StringConstraints(
+                    pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64
+                ),
+            ],
             CustomFields | float | bool | None,
         ]
         | None,
@@ -4255,7 +4308,12 @@ class ContactBulkCreateRow(BaseModel):
     ] = None
     customFields: Annotated[
         dict[
-            constr(pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64),
+            Annotated[
+                str,
+                StringConstraints(
+                    pattern=r'^(?![$_])[\x20-\x7e]+$', min_length=1, max_length=64
+                ),
+            ],
             CustomFields | float | bool | None,
         ]
         | None,
@@ -4865,6 +4923,12 @@ class ApiPostPlatformResult(BaseModel):
     ] = None
     platformPostUrl: str | None = None
     error: str | None = None
+    platformError: Annotated[
+        PlatformError1 | None,
+        Field(
+            description='The platform\'s own error envelope for this failure, present only when the platform returned one (today: Instagram, Facebook, and Threads). Fields the platform did not send are absent. When PostZen stops retrying (`error` begins with "Publishing failed after too many attempts"), this is the last attempt\'s envelope.'
+        ),
+    ] = None
     customContent: Annotated[
         str | None,
         Field(

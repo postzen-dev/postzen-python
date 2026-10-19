@@ -11821,6 +11821,28 @@
 					"error": {
 						"type": "string"
 					},
+					"platformError": {
+						"type": "object",
+						"description": "The platform's own error envelope for this failure, present only when the platform returned one (today: Instagram, Facebook, and Threads). Fields the platform did not send are absent. When PostZen stops retrying (`error` begins with \"Publishing failed after too many attempts\"), this is the last attempt's envelope.",
+						"properties": {
+							"code": {
+								"type": "integer",
+								"description": "The platform's error code, for example Meta's `36003`."
+							},
+							"subcode": {
+								"type": "integer",
+								"description": "The platform's error subcode, for example Meta's `2207009`."
+							},
+							"fbtraceId": {
+								"type": "string",
+								"description": "Meta's trace id for the failed call. Quote it to Meta support; Meta expires it after a short time."
+							},
+							"type": {
+								"type": "string",
+								"description": "The platform's error type, for example `OAuthException`."
+							}
+						}
+					},
 					"customContent": {
 						"type": "string",
 						"description": "The per-platform content override this target was created with, if any."
@@ -12332,6 +12354,28 @@
 					"errorMessage": {
 						"type": "string",
 						"description": "Human-readable failure detail, when available."
+					},
+					"platformError": {
+						"type": "object",
+						"description": "The platform's own error envelope for the failure (Meta's code, subcode, fbtrace_id, and type), present only when the platform returned one. Fields the platform did not send are absent.",
+						"properties": {
+							"code": {
+								"type": "integer",
+								"description": "The platform's error code, for example Meta's `36003`."
+							},
+							"subcode": {
+								"type": "integer",
+								"description": "The platform's error subcode, for example Meta's `2207009`."
+							},
+							"fbtraceId": {
+								"type": "string",
+								"description": "Meta's trace id for the failed call. Quote it to Meta support; Meta expires it after a short time."
+							},
+							"type": {
+								"type": "string",
+								"description": "The platform's error type, for example `OAuthException`."
+							}
+						}
 					},
 					"attemptCount": {
 						"type": "integer",
