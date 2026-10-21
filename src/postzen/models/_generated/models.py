@@ -2427,10 +2427,16 @@ class WebhookPostTargetEventTarget(BaseModel):
         Field(description='Status of one platform target when the event was created.'),
     ]
     platformPostId: Annotated[
-        str | None, Field(description="The platform's own id for the published post.")
+        str | None,
+        Field(
+            description="The platform's own id for the published post. For TikTok it is usually absent: the id appears on the post only once TikTok makes it public, usually within a minute, so fetch the post to read it."
+        ),
     ] = None
     platformPostUrl: Annotated[
-        str | None, Field(description='Public URL of the published post.')
+        str | None,
+        Field(
+            description='Public URL of the published post. For TikTok it arrives with platformPostId, and photo posts get none.'
+        ),
     ] = None
     publishedAt: Annotated[
         datetime | None, Field(description='When the target was published.')
@@ -4912,7 +4918,7 @@ class ApiPostPlatformResult(BaseModel):
     platformPostId: Annotated[
         str | None,
         Field(
-            description="The platform's own id for the published post. Present as soon as this target is published, so it can be used right away with the inbox and analytics endpoints. For a thread, this is the root post's id."
+            description="The platform's own id for the published post. Present as soon as this target is published, so it can be used right away with the inbox and analytics endpoints. For a thread, this is the root post's id. TikTok is the exception: the id and platformPostUrl appear only once TikTok makes the post public, usually within a minute; a draft gets them when the creator posts it, and a photo post gets an id but no URL."
         ),
     ] = None
     platformPostIds: Annotated[
