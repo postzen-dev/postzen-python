@@ -36,7 +36,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://postzen.dev"
+Homepage = "https://www.postzen.dev/?utm_source=pypi&utm_medium=listing&utm_campaign=postzen-python"
 Repository = "https://github.com/postzen-dev/postzen-python"
 Documentation = "https://docs.postzen.dev"
 

@@ -373,7 +373,7 @@ client.posts.create_post(
 ## Requirements
 
 - Python 3.10 or later
-- A PostZen API key ([create one](https://app.postzen.dev/api-keys))
+- A PostZen API key ([create one](https://app.postzen.dev/api-keys?utm_source=pypi&utm_medium=readme&utm_campaign=postzen-python))
 
 Runtime dependencies:
 
@@ -387,7 +387,7 @@ Runtime dependencies:
 - [Node.js SDK](https://github.com/postzen-dev/postzen-node) — `@postzen/node`
 - [CLI](https://github.com/postzen-dev/postzen-cli) — `@postzen/cli`
 - [MCP server](https://docs.postzen.dev/mcp)
-- [Dashboard & API keys](https://app.postzen.dev/api-keys)
+- [Dashboard & API keys](https://app.postzen.dev/api-keys?utm_source=pypi&utm_medium=readme&utm_campaign=postzen-python)
 
 ## License
 
