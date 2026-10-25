@@ -66,19 +66,21 @@ class ConnectResource(BaseResource[Any]):
         data = await self._client._apost('/v1/connect/pinterest/select-board', data=payload)
         return PinterestSelectBoardResponse.model_validate(data)
 
-    def create_connect_url(self, platform: str, *, profile_id: str, redirect_url: str | None = None) -> ConnectStartResponse:
+    def create_connect_url(self, platform: str, *, profile_id: str | None = None, account_id: str | None = None, redirect_url: str | None = None) -> ConnectStartResponse:
         """Create an OAuth connect URL."""
         params = self._build_params(
             profile_id=profile_id,
+            account_id=account_id,
             redirect_url=redirect_url,
         )
         data = self._client._get(f"/v1/connect/{platform}", params=params)
         return ConnectStartResponse.model_validate(data)
 
-    async def acreate_connect_url(self, platform: str, *, profile_id: str, redirect_url: str | None = None) -> ConnectStartResponse:
+    async def acreate_connect_url(self, platform: str, *, profile_id: str | None = None, account_id: str | None = None, redirect_url: str | None = None) -> ConnectStartResponse:
         """Create an OAuth connect URL (async)."""
         params = self._build_params(
             profile_id=profile_id,
+            account_id=account_id,
             redirect_url=redirect_url,
         )
         data = await self._client._aget(f"/v1/connect/{platform}", params=params)

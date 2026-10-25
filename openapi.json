@@ -1040,13 +1040,22 @@
 				],
 				"operationId": "createConnectUrl",
 				"summary": "Create an OAuth connect URL",
-				"description": "Initiates an OAuth connection flow and returns an authorization URL to redirect the user to. The OAuth state expires after 10 minutes. This endpoint requires a read-write API key.\n\nFor `bluesky`, the returned `authUrl` is a PostZen-hosted page where the user enters their Bluesky handle and app password (no developer app or OAuth redirect is required); the connection completes when they submit that form.\n\nFor `telegram`, the returned `authUrl` is a PostZen-hosted page that issues a short-lived access code (there is no OAuth grant and no Telegram authorization screen); the connection completes when the user adds @PostZenScheduleBot as an administrator of a channel or group and sends that code to the bot.",
+				"description": "Initiates an OAuth connection flow and returns an authorization URL to redirect the user to. The OAuth state expires after 10 minutes. This endpoint requires a read-write API key.\n\nFor `bluesky`, the returned `authUrl` is a PostZen-hosted page where the user enters their Bluesky handle and app password (no developer app or OAuth redirect is required); the connection completes when they submit that form.\n\nFor `telegram`, the returned `authUrl` is a PostZen-hosted page that issues a short-lived access code (there is no OAuth grant and no Telegram authorization screen); the connection completes when the user adds @PostZenScheduleBot as an administrator of a channel or group and sends that code to the bot.\n\nTo reauthorize an existing account, pass `accountId` instead of `profileId`. The flow is pinned to that account: the user must authorize the same provider account, and the account keeps its id, profile, scheduled posts and comment automations. Reauthorizing an account whose status is `connected` or `needsReauth` does not count against your plan's included accounts. Disconnecting and connecting again instead creates a new account id and cancels the account's pending posts, so prefer `accountId`.",
 				"parameters": [
 					{
 						"name": "profileId",
 						"in": "query",
-						"required": true,
-						"description": "PostZen profile id to attach the connected account to.",
+						"required": false,
+						"description": "PostZen profile id to attach a new account to. Required unless `accountId` is set; when both are set they must agree.",
+						"schema": {
+							"type": "string"
+						}
+					},
+					{
+						"name": "accountId",
+						"in": "query",
+						"required": false,
+						"description": "Reauthorize an existing account instead of connecting a new one. The account keeps its id, profile, scheduled posts and comment automations. The platform in the path must match the account's platform. Use this when an account's status is `needsReauth`.",
 						"schema": {
 							"type": "string"
 						}
