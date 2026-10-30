@@ -73,6 +73,7 @@ class CommentAutomationLog(BaseModel):
             'follow_status_unknown',
             'contact_blocked',
             'contact_unsubscribed',
+            'plan_limit',
         ]
         | None
     ) = None

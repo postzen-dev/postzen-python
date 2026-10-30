@@ -8127,7 +8127,8 @@
 							"below_min_followers",
 							"follow_status_unknown",
 							"contact_blocked",
-							"contact_unsubscribed"
+							"contact_unsubscribed",
+							"plan_limit"
 						]
 					},
 					"error": {
